@@ -28,7 +28,8 @@ npm run dev
 - 질문·상황·진단·조치·확인된 해결 결과를 한국 시간 기준 날짜별로 집계합니다. `backend/reports/data/YYYY-MM-DD.xlsx`에 업무 요약과 질문 로그 시트를 만듭니다. 화면의 **Daily Reports**에서 날짜별 확인과 다운로드가 가능합니다.
 - 서버가 실행 중일 때 60초마다 SQLite의 일관된 복사본을 `backend/backups/raft-YYYY-MM-DD.sqlite3`에 갱신합니다. 이전 날짜의 백업은 보존합니다. **Daily Reports → 지금 백업**으로 즉시 복사할 수도 있습니다.
 - SQLite 원본, 백업, 엑셀, 비밀키는 Git에서 제외됩니다. 컴퓨터 전체가 손상될 상황에 대비하려면 `backend/data`, `backend/backups`, `backend/reports/data`를 개인 백업 디스크에 함께 복사하세요.
-- 엑셀 파일은 Google Sheets로 가져올 수 있습니다. 자동 Google Sheets 동기화는 로컬 전용 구성에 포함하지 않았습니다.
+- [SMC-Helpdesk Google Sheet](https://docs.google.com/spreadsheets/d/1DxtdDGSBx5L8FbHWsd8hATeQj24_Wyfd_GG1dNuf21E/edit)에 질문 로그, 일별 요약, FAQ를 기록합니다. 기존 기록은 옮겼고, Codex 자동화가 매일 23:50(컴퓨터 현지 시간)에 새 기록과 변경 사항을 동기화합니다. Incident ID·날짜·FAQ ID를 각각 고유 키로 사용해 재실행해도 중복 행을 만들지 않습니다. 로컬 SQLite가 원본이며, Google Sheet는 공유·열람용 복사본입니다. 자동화가 꺼져 있거나 실행되지 않으면 로컬 기록은 유지되며 Sheet 반영은 늦어집니다.
+- 동기화에 사용할 행은 `.venv/bin/python -m backend.sheets.snapshot`으로 확인할 수 있습니다. 질문·상황·조치에 민감 정보가 있다면 Google Sheet 공유 설정을 확인하세요.
 
 ## 진단 연결
 
