@@ -21,6 +21,7 @@ onMounted(load)
       <div class="metric-card"><small>RESOLVED KNOWLEDGE</small><strong>{{ data.stats.resolved_knowledge }}</strong></div>
       <div class="metric-card"><small>PUBLISHED FAQ</small><strong>{{ data.stats.faq_count }}</strong></div>
     </div>
+    <p v-if="data" class="soft-text">현재 검색 방식: 로컬 SQLite의 확인된 해결 사례·FAQ를 BM25로 검색합니다. 임베딩 벡터 DB는 아직 연결되지 않았습니다. 현재 검색 가능한 문서는 {{ data.stats.resolved_knowledge + data.stats.faq_count }}건입니다.</p>
     <form class="knowledge-search" @submit.prevent="load"><input v-model="query" placeholder="오류, 질문, 상황 검색" aria-label="지식 검색" /><button class="secondary-button">검색</button></form>
     <p v-if="error" class="inline-error">{{ error }}</p>
     <div v-if="data && query" class="knowledge-results">

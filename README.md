@@ -28,8 +28,25 @@ npm run dev
 - 질문·상황·진단·조치·확인된 해결 결과를 한국 시간 기준 날짜별로 집계합니다. `backend/reports/data/YYYY-MM-DD.xlsx`에 업무 요약과 질문 로그 시트를 만듭니다. 화면의 **Daily Reports**에서 날짜별 확인과 다운로드가 가능합니다.
 - 서버가 실행 중일 때 60초마다 SQLite의 일관된 복사본을 `backend/backups/raft-YYYY-MM-DD.sqlite3`에 갱신합니다. 이전 날짜의 백업은 보존합니다. **Daily Reports → 지금 백업**으로 즉시 복사할 수도 있습니다.
 - SQLite 원본, 백업, 엑셀, 비밀키는 Git에서 제외됩니다. 컴퓨터 전체가 손상될 상황에 대비하려면 `backend/data`, `backend/backups`, `backend/reports/data`를 개인 백업 디스크에 함께 복사하세요.
-- [SMC-Helpdesk Google Sheet](https://docs.google.com/spreadsheets/d/1DxtdDGSBx5L8FbHWsd8hATeQj24_Wyfd_GG1dNuf21E/edit)에 질문 로그, 일별 요약, FAQ를 기록합니다. 기존 기록은 옮겼고, Codex 자동화가 매일 16:50(컴퓨터 현지 시간)에 새 기록과 변경 사항을 동기화합니다. Incident ID·날짜·FAQ ID를 각각 고유 키로 사용해 재실행해도 중복 행을 만들지 않습니다. 로컬 SQLite가 원본이며, Google Sheet는 공유·열람용 복사본입니다. 자동화가 꺼져 있거나 실행되지 않으면 로컬 기록은 유지되며 Sheet 반영은 늦어집니다.
+- [SMC-Helpdesk Google Sheet](https://docs.google.com/spreadsheets/d/1DxtdDGSBx5L8FbHWsd8hATeQj24_Wyfd_GG1dNuf21E/edit)에 질문 로그, 일별 요약, FAQ를 기록합니다. Codex 자동화가 매일 16:50(컴퓨터 현지 시간)에 동기화하고, **Daily Reports → 지금 업로드**로 즉시 반영할 수도 있습니다. Incident ID·날짜·FAQ ID를 각각 고유 키로 사용해 재실행해도 중복 행을 만들지 않습니다. 로컬 SQLite가 원본이며, Google Sheet는 공유·열람용 복사본입니다.
 - 동기화에 사용할 행은 `.venv/bin/python -m backend.sheets.snapshot`으로 확인할 수 있습니다. 질문·상황·조치에 민감 정보가 있다면 Google Sheet 공유 설정을 확인하세요.
+
+### 수동 업로드 연결
+
+앱 서버에는 Codex의 Google 연결 권한이 전달되지 않습니다. 링크가 있는 사용자에게 편집 권한을 주어도 Google Sheets API는 별도 인증을 요구합니다. 이 대화에서 **지금 업로드**라고 요청하면 연결된 Google 계정으로 바로 반영할 수 있습니다. 앱 화면의 버튼을 사용하려면 별도의 Google 서비스 계정이 필요합니다.
+
+1. Google Cloud에서 Sheets API를 활성화하고 서비스 계정의 JSON 키를 만듭니다.
+2. 키 파일을 이 저장소의 `secrets/google-service-account.json`에 저장합니다. 다른 경로를 쓰려면 `RAFT_GOOGLE_SERVICE_ACCOUNT_FILE` 환경 변수를 지정합니다. `secrets/`는 Git에서 제외됩니다.
+3. 대상 Sheet의 **공유**에서 JSON의 `client_email` 주소에 **편집자** 권한이 있는지 확인합니다. 앱의 Daily Reports에도 이 주소가 표시됩니다.
+4. Daily Reports를 새로고침한 뒤 **지금 업로드**를 누릅니다. 버튼은 새 행만 추가하고 값이 바뀐 기존 행만 갱신하며, 업로드 후 다시 읽어 확인합니다. 질문 원문을 수식으로 실행하지 않도록 값은 `RAW`로 씁니다.
+
+`GET /api/v1/reports/sheets/status`와 `POST /api/v1/reports/sheets/sync`가 같은 기능을 제공합니다. Google 권한이 없으면 로컬 데이터는 그대로 남습니다.
+
+## 현재 RAG 저장소
+
+- SQLite의 `incidents`에 원본 질문과 상태, `events`에 조사 흐름, `knowledge`에 질문·상황·진단·조치의 검색용 복사본, `faq`에 게시된 답변을 저장합니다.
+- 검색 시 `knowledge` 중 **운영자가 해결을 확인한 행**과 게시된 FAQ를 모아 BM25 점수를 그때 계산합니다. 한국어는 연속된 두 글자 단위도 색인합니다. Top-3이 Qwen 판단 문맥으로 들어갑니다.
+- 현재는 임베딩 벡터, 영속적인 벡터 인덱스, FAISS 또는 pgvector가 없습니다. 따라서 'VDB'라기보다 **SQLite 원본 + 즉석 BM25 검색**입니다. 미해결 질문은 기록·빈발 오류 집계에는 남지만 검증된 답변으로 검색되지는 않습니다.
 
 ## 진단 연결
 

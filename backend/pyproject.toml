@@ -1,5 +1,5 @@
 [project]
 name = "app"
 version = "0.1.0"
-dependencies = [ "fastapi>=0.142, <0.143", "uvicorn>=0.35, <1" ]
+dependencies = [ "fastapi>=0.142, <0.143", "uvicorn>=0.35, <1", "google-auth[requests]>=2.40, <3" ]
 requires-python = "~=3.14.0"

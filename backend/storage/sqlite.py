@@ -56,6 +56,11 @@ def init_db() -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT, signature TEXT NOT NULL UNIQUE,
             question TEXT NOT NULL, answer TEXT NOT NULL, updated_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS sheet_sync (
+            id INTEGER PRIMARY KEY CHECK(id = 1), completed_at TEXT NOT NULL,
+            updated_rows INTEGER NOT NULL, inserted_rows INTEGER NOT NULL,
+            unchanged_rows INTEGER NOT NULL
+        );
         """)
         for row in db.execute("SELECT id, message, state, created_at, updated_at FROM incidents").fetchall():
             _index_incident(db, row["id"], row["message"], IncidentState.model_validate_json(row["state"]), row["updated_at"])
@@ -157,3 +162,24 @@ def save_faq(signature: str, question: str, answer: str) -> dict[str, Any]:
             updated_at=excluded.updated_at""", (signature, question, answer, now))
         row = db.execute("SELECT * FROM faq WHERE signature=?", (signature,)).fetchone()
     return dict(row)
+
+
+def get_sheet_sync() -> dict[str, Any] | None:
+    with _connection() as db:
+        try:
+            row = db.execute("SELECT * FROM sheet_sync WHERE id=1").fetchone()
+        except sqlite3.OperationalError:
+            return None  # Status remains readable until the next application startup migrates the DB.
+    return dict(row) if row else None
+
+
+def record_sheet_sync(updated_rows: int, inserted_rows: int, unchanged_rows: int) -> dict[str, Any]:
+    completed_at = datetime.now(timezone.utc).isoformat()
+    with _connection() as db:
+        db.execute("""INSERT INTO sheet_sync VALUES (1, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET completed_at=excluded.completed_at,
+            updated_rows=excluded.updated_rows, inserted_rows=excluded.inserted_rows,
+            unchanged_rows=excluded.unchanged_rows""",
+            (completed_at, updated_rows, inserted_rows, unchanged_rows))
+    return {"completed_at": completed_at, "updated_rows": updated_rows,
+            "inserted_rows": inserted_rows, "unchanged_rows": unchanged_rows}
