@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+backend/data/
+backend/reports/data/
+frontend/node_modules/
+frontend/dist/
+.env
+.vercel/
+secrets/
+.vercel
+.env*
