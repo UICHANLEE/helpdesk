@@ -4,6 +4,7 @@ import asyncio
 import ipaddress
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,13 +17,19 @@ from backend.storage.sqlite import init_db
 
 
 async def maintenance() -> None:
+    last_export_at = None
     while True:
-        for task in (backup.backup_now, daily.refresh_all):
-            try:
-                await asyncio.to_thread(task)
-            except Exception:
-                # The SQLite original stays intact; try the backup/export again next pass.
-                pass
+        try:
+            await asyncio.to_thread(backup.backup_now)
+        except Exception:
+            pass
+        try:
+            started_at = datetime.now(timezone.utc)
+            await asyncio.to_thread(daily.refresh_all, last_export_at)
+            last_export_at = started_at
+        except Exception:
+            # The SQLite original stays intact; retry the export next pass.
+            pass
         await asyncio.sleep(60)
 
 

@@ -21,9 +21,9 @@ def _day(timestamp: str) -> str:
     return datetime.fromisoformat(timestamp).astimezone(KST).date().isoformat()
 
 
-def report(day: str) -> dict:
+def report(day: str, incidents: list[dict] | None = None) -> dict:
     date.fromisoformat(day)
-    incidents = [item for item in storage.list_all_incidents() if _day(item["created_at"]) == day]
+    incidents = [item for item in (incidents if incidents is not None else storage.list_all_incidents()) if _day(item["created_at"]) == day]
     records = []
     for item in incidents:
         state = item["state"]
@@ -53,6 +53,12 @@ def available_days() -> list[str]:
     return sorted({_day(item["created_at"]) for item in storage.list_all_incidents()}, reverse=True)
 
 
+def summaries() -> list[dict]:
+    incidents = storage.list_all_incidents()
+    days = sorted({_day(item["created_at"]) for item in incidents}, reverse=True)
+    return [{key: value for key, value in report(day, incidents).items() if key != "records"} for day in days]
+
+
 def _column(number: int) -> str:
     result = ""
     while number:
@@ -78,8 +84,8 @@ def _sheet(rows: list[list[str]], widths: list[int]) -> bytes:
             f'<sheetData>{"".join(lines)}</sheetData></worksheet>').encode()
 
 
-def export(day: str) -> Path:
-    data = report(day)
+def export(day: str, incidents: list[dict] | None = None) -> Path:
+    data = report(day, incidents)
     REPORT_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     REPORT_DIR.chmod(0o700)
     path = REPORT_DIR / f"{day}.xlsx"
@@ -102,6 +108,9 @@ def export(day: str) -> Path:
     return path
 
 
-def refresh_all() -> None:
-    for day in available_days():
-        export(day)
+def refresh_all(since: datetime | None = None) -> None:
+    incidents = storage.list_all_incidents()
+    days = {_day(item["created_at"]) for item in incidents
+            if since is None or datetime.fromisoformat(item["updated_at"]) >= since}
+    for day in sorted(days):
+        export(day, incidents)

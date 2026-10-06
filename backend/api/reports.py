@@ -21,7 +21,7 @@ def create_backup() -> dict:
 
 @router.get("/reports/daily")
 def days() -> list[dict]:
-    return [{key: value for key, value in daily.report(day).items() if key != "records"} for day in daily.available_days()]
+    return daily.summaries()
 
 
 @router.get("/reports/daily/{day}")

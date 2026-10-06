@@ -5,6 +5,7 @@ import sqlite3
 import tempfile
 import unittest
 from contextlib import closing
+from datetime import datetime, timezone
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -42,13 +43,15 @@ class KnowledgeWorkflowTest(unittest.TestCase):
         self.assertEqual(search("DB 저장 실패"), [])
         with self.assertRaises(HTTPException):
             asyncio.run(update_status(incident_id, StatusUpdateRequest(status=IncidentStatus.resolved)))
+        changed_since = datetime.now(timezone.utc)
         asyncio.run(update_status(incident_id, StatusUpdateRequest(status=IncidentStatus.resolved,
                            root_cause="연결 풀 고갈", successful_action="연결 누수 수정")))
         self.assertEqual(search("DB 저장 실패")[0]["answer"], "연결 풀 고갈")
         self.assertEqual(publish_faq(FaqRequest(incident_id=incident_id, question="저장 실패 시?",
                                               answer="연결 풀을 확인합니다."))["question"], "저장 실패 시?")
         day = daily.available_days()[0]
-        workbook = daily.export(day)
+        daily.refresh_all(changed_since)
+        workbook = daily.REPORT_DIR / f"{day}.xlsx"
         with ZipFile(workbook) as archive:
             self.assertIn("연결 누수 수정", archive.read("xl/worksheets/sheet2.xml").decode())
         snapshot = backup.backup_now()
