@@ -64,11 +64,11 @@ def init_db() -> None:
             updated_at TEXT NOT NULL, PRIMARY KEY(kind, record_id)
         );
         """)
-        for row in db.execute("SELECT id, message, state, updated_at FROM incidents").fetchall():
-            _index_incident(db, row["id"], row["message"], IncidentState.model_validate_json(row["state"]), row["updated_at"])
+        for row in db.execute("SELECT id, message, state, created_at, updated_at FROM incidents").fetchall():
+            _index_incident(db, row["id"], row["message"], IncidentState.model_validate_json(row["state"]), row["updated_at"], row["created_at"])
 
 
-def _index_incident(db: sqlite3.Connection, incident_id: str, message: str, state: IncidentState, now: str) -> None:
+def _index_incident(db: sqlite3.Connection, incident_id: str, message: str, state: IncidentState, now: str, created_at: str) -> None:
     domain = state.classification.domain if state.classification else "UNKNOWN"
     verified = state.status.value == "resolved" and bool(state.resolution)
     knowledge_status = "resolved" if verified else "unverified" if state.status.value == "resolved" else state.status.value
@@ -82,7 +82,8 @@ def _index_incident(db: sqlite3.Connection, incident_id: str, message: str, stat
          json.dumps(actions, ensure_ascii=False), domain, knowledge_status, now))
     payload = {"id": incident_id, "question": message, "situation": "; ".join(state.symptoms),
                "diagnosis": diagnosis, "actions": actions, "domain": domain,
-               "status": state.status.value, "state": state.model_dump(mode="json"), "updated_at": now}
+               "status": state.status.value, "state": state.model_dump(mode="json"), "created_at": created_at,
+               "updated_at": now}
     db.execute("""INSERT INTO sync_outbox VALUES ('incident', ?, ?, ?)
         ON CONFLICT(kind, record_id) DO UPDATE SET payload=excluded.payload, updated_at=excluded.updated_at""",
         (incident_id, json.dumps(payload, ensure_ascii=False), now))
@@ -98,7 +99,7 @@ def create_incident(message: str, state: IncidentState) -> str:
         incident_id = f"INC-{number}"
         state.id = incident_id
         db.execute("INSERT INTO incidents VALUES (?, ?, ?, ?, ?)", (incident_id, message, state.model_dump_json(), now, now))
-        _index_incident(db, incident_id, message, state, now)
+        _index_incident(db, incident_id, message, state, now, now)
     return incident_id
 
 
@@ -109,10 +110,10 @@ def save_state(state: IncidentState) -> None:
         return
     now = datetime.now(timezone.utc).isoformat()
     with _lock, _connection() as db:
-        row = db.execute("SELECT message FROM incidents WHERE id=?", (state.id,)).fetchone()
+        row = db.execute("SELECT message, created_at FROM incidents WHERE id=?", (state.id,)).fetchone()
         if row:
             db.execute("UPDATE incidents SET state=?, updated_at=? WHERE id=?", (state.model_dump_json(), now, state.id))
-            _index_incident(db, state.id, row["message"], state, now)
+            _index_incident(db, state.id, row["message"], state, now, row["created_at"])
 
 
 def get_incident(incident_id: str) -> dict[str, Any] | None:

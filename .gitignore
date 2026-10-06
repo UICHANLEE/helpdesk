@@ -10,3 +10,4 @@ frontend/dist/
 secrets/
 .vercel
 .env*
+backend/.python-version

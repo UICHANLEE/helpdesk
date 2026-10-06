@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -47,6 +48,9 @@ class KnowledgeWorkflowTest(unittest.TestCase):
         with ZipFile(workbook) as archive:
             self.assertIn("연결 누수 수정", archive.read("xl/worksheets/sheet2.xml").decode())
         self.assertGreaterEqual(len(storage.pending_sync()), 3)
+        incident = storage.get_incident(incident_id)
+        mirrored = next(row for row in storage.pending_sync() if row["kind"] == "incident")
+        self.assertEqual(json.loads(mirrored["payload"])["created_at"], incident["created_at"])
 
 
 if __name__ == "__main__":

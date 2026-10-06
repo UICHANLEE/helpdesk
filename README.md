@@ -34,9 +34,9 @@ npm run dev
 - Incident Workspace: 저장된 이벤트 Timeline, 상태, 근거, 가설, 진단 Trace, Raw state를 표시합니다.
 - Infrastructure: 각 읽기 전용 점검 도구의 연결 가능 여부를 표시합니다. 연결 가능 여부는 서비스 건강 상태를 뜻하지 않습니다.
 - RAFT/RAG: 모든 새 질문과 진단을 지식 인덱스에 누적합니다. 사람이 확인한 원인과 성공한 조치로 해결 처리한 Incident 및 게시된 FAQ만 로컬 BM25 검색으로 Top-3을 뽑아 Qwen의 근거에 넣습니다. 외부 `RAFT_SEARCH_URL` 결과가 있으면 함께 사용합니다. 이는 검색 증강이며 모델 가중치를 재학습하지 않습니다.
-- Daily Reports: 한국 시간 기준 질문·상황·제안된 조치·실제 성공한 조치를 일별로 집계합니다. 서버 실행 중 60초마다 `backend/reports/data/YYYY-MM-DD.xlsx`를 갱신하며 화면에서 날짜별 요약과 엑셀 다운로드를 제공합니다.
+- Daily Reports: 한국 시간 기준 질문·상황·제안된 조치·실제 성공한 조치를 일별로 집계합니다. 로컬 서버는 60초마다 `backend/reports/data/YYYY-MM-DD.xlsx`를 갱신합니다. Vercel에서는 Supabase의 기록을 바탕으로 다운로드 요청 시 엑셀을 생성합니다.
 - FAQ Dashboard: 진단명과 영역별 반복 횟수를 표시하고 검증된 해결 사례를 FAQ로 게시합니다.
-- Supabase: `supabase-violet-park` 프로젝트에 RAFT 전용 테이블을 만들었습니다. SQLite를 로컬 원본으로 유지하고 변경 사항을 내구성 있는 outbox에 쌓은 뒤 서버 전용 키가 설정되면 60초마다 원격에 재시도합니다. 원격 연결이 없어도 로컬 기록은 계속됩니다.
+- Supabase: `supabase-violet-park` 프로젝트에 RAFT 전용 테이블을 만들었습니다. 로컬에서는 SQLite에 저장하고 변경 사항을 내구성 있는 outbox에 쌓아 서버 전용 키가 설정되면 원격에 재시도합니다. Vercel에서는 Supabase를 원본 저장소로 사용합니다.
 - Jev: [TypeSafe System One](https://docs.typesafe.ai/api) Choice 질문으로 장애 영역·보조 영역·복잡도를 판단합니다. 키는 기본적으로 Git에서 제외된 `secrets/typesafe_api_key.txt`에서 읽습니다. 호출 실패 시 규칙 기반 분류를 사용하고 출처를 표시합니다.
 - Qwen: 로컬 Ollama의 `qwen3:14b-q4_K_M`을 기본 모델로 사용합니다. `MEDIUM` 또는 `DEEP`에서 로컬 OpenAI 호환 API를 호출하며, 모델이 없거나 실패하면 규칙 기반 조치를 유지하고 실제 모델 판단으로 표시하지 않습니다.
 - Tool: 허용 목록의 읽기 전용 POST endpoint만 호출합니다. 응답이 없으면 `unconfigured`로 남깁니다.
