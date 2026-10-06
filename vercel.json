@@ -12,7 +12,8 @@
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": { "service": "backend" } },
-    { "source": "/(.*)", "destination": { "service": "frontend" } }
+    { "source": "/assets/(.*)", "destination": { "service": "frontend" } },
+    { "source": "/(.*)", "destination": { "service": "frontend", "path": "/index.html" } }
   ],
   "headers": [
     { "source": "/(.*)", "headers": [
