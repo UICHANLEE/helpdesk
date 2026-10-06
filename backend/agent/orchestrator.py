@@ -60,9 +60,6 @@ async def start(message: str) -> tuple[str, Classification]:
     incident_id = storage.create_incident(message, state)
     await publish(incident_id, "user", {"message": message})
     await publish(incident_id, "jev", {"classification": classification.model_dump(), "parsed": {k: v for k, v in parsed.items() if k != "text"}})
-    if storage.cloud_mode():
-        await investigate(incident_id, parsed, judgment)
-        return incident_id, classification
     task = asyncio.create_task(investigate(incident_id, parsed, judgment))
     _tasks.add(task)
     task.add_done_callback(_tasks.discard)

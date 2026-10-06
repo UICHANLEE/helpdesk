@@ -10,14 +10,13 @@ import SupportPage from './pages/SupportPage.vue'
 import KnowledgePage from './pages/KnowledgePage.vue'
 import FaqPage from './pages/FaqPage.vue'
 import DailyReportsPage from './pages/DailyReportsPage.vue'
-import LoginPage from './pages/LoginPage.vue'
 import './style.css'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', redirect: '/diagnose' },
-    { path: '/login', component: LoginPage, meta: { title: 'Login' } },
+    { path: '/login', redirect: '/diagnose' },
     { path: '/dashboard', component: DashboardPage, meta: { title: 'Dashboard' } },
     { path: '/diagnose', component: DiagnosePage, meta: { title: 'Quick Diagnose' } },
     { path: '/incidents', component: IncidentsPage, meta: { title: 'Incidents' } },
@@ -33,16 +32,6 @@ const router = createRouter({
     { path: '/reports', component: DailyReportsPage, meta: { title: 'Daily Reports' } },
     ...['logs', 'tools', 'audit', 'settings'].map(section => ({ path: `/${section}`, component: SupportPage, props: { section, area: section }, meta: { title: section[0].toUpperCase() + section.slice(1) } })),
   ],
-})
-
-router.beforeEach(async to => {
-  if (to.path === '/login') return true
-  try {
-    const response = await fetch('/api/v1/auth/status', { cache: 'no-store' })
-    const body = await response.json()
-    if (body.authenticated) return true
-  } catch { /* show login while API is unavailable */ }
-  return { path: '/login', query: { next: to.fullPath } }
 })
 
 createApp(App).use(router).mount('#app')

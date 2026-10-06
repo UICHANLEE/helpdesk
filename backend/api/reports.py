@@ -4,8 +4,19 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from backend.reports import daily
+from backend.storage import backup
 
 router = APIRouter()
+
+
+@router.get("/reports/storage")
+def storage_status() -> dict:
+    return backup.status()
+
+
+@router.post("/reports/backup")
+def create_backup() -> dict:
+    return backup.backup_now()
 
 
 @router.get("/reports/daily")

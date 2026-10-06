@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import json
+import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -14,7 +15,7 @@ from backend.api.knowledge import FaqRequest, publish_faq
 from backend.knowledge.service import search
 from backend.models import Classification, IncidentState, IncidentStatus, StatusUpdateRequest
 from backend.reports import daily
-from backend.storage import sqlite as storage
+from backend.storage import backup, sqlite as storage
 
 
 class KnowledgeWorkflowTest(unittest.TestCase):
@@ -22,13 +23,16 @@ class KnowledgeWorkflowTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.old_path = storage.DB_PATH
         self.old_reports = daily.REPORT_DIR
+        self.old_backups = backup.BACKUP_DIR
         storage.DB_PATH = Path(self.temp.name) / "incidents.sqlite3"
         daily.REPORT_DIR = Path(self.temp.name) / "reports"
+        backup.BACKUP_DIR = Path(self.temp.name) / "backups"
         storage.init_db()
 
     def tearDown(self) -> None:
         storage.DB_PATH = self.old_path
         daily.REPORT_DIR = self.old_reports
+        backup.BACKUP_DIR = self.old_backups
         self.temp.cleanup()
 
     def test_only_verified_resolution_enters_retrieval_and_daily_workbook(self) -> None:
@@ -47,10 +51,11 @@ class KnowledgeWorkflowTest(unittest.TestCase):
         workbook = daily.export(day)
         with ZipFile(workbook) as archive:
             self.assertIn("연결 누수 수정", archive.read("xl/worksheets/sheet2.xml").decode())
-        self.assertGreaterEqual(len(storage.pending_sync()), 3)
-        incident = storage.get_incident(incident_id)
-        mirrored = next(row for row in storage.pending_sync() if row["kind"] == "incident")
-        self.assertEqual(json.loads(mirrored["payload"])["created_at"], incident["created_at"])
+        snapshot = backup.backup_now()
+        self.assertEqual(snapshot["backup_count"], 1)
+        with closing(sqlite3.connect(backup.BACKUP_DIR / snapshot["latest_backup"])) as database:
+            self.assertEqual(database.execute("SELECT COUNT(*) FROM incidents").fetchone()[0], 1)
+            self.assertEqual(database.execute("PRAGMA integrity_check").fetchone()[0], "ok")
 
 
 if __name__ == "__main__":

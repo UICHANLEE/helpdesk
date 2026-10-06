@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 backend/data/
 backend/reports/data/
+backend/backups/
 frontend/node_modules/
 frontend/dist/
 .env

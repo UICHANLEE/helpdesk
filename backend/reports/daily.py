@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 from backend.storage import sqlite as storage
 
 KST = ZoneInfo("Asia/Seoul")
-REPORT_DIR = Path(os.getenv("RAFT_REPORT_DIR", "/tmp/raft_reports" if os.getenv("VERCEL") else str(Path(__file__).parent / "data")))
+REPORT_DIR = Path(os.getenv("RAFT_REPORT_DIR", str(Path(__file__).parent / "data")))
 
 
 def _day(timestamp: str) -> str:

@@ -8,7 +8,6 @@ from fastapi.responses import StreamingResponse
 
 from backend.agent.orchestrator import stream
 from backend.api.incidents import require_incident
-from backend.storage import sqlite as storage
 
 router = APIRouter()
 
@@ -22,10 +21,6 @@ async def incident_stream(incident_id: str, request: Request, last_event_id: str
         after = 0
 
     async def events() -> AsyncIterator[str]:
-        if storage.cloud_mode():
-            for event in storage.get_events(incident_id, after):
-                yield f"id: {event['id']}\nevent: {event['type']}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
-            return
         async for event in stream(incident_id, after):
             if await request.is_disconnected():
                 break

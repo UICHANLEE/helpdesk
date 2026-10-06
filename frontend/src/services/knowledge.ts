@@ -5,8 +5,11 @@ export interface FrequentError { signature: string; domain: string; diagnosis: s
 export interface Faq { id: number; signature: string; question: string; answer: string; updated_at: string }
 export interface KnowledgeData { stats: { questions: number; resolved_knowledge: number; faq_count: number; domains: Record<string, number> }; results: KnowledgeResult[]; frequent_errors: FrequentError[]; faq: Faq[] }
 export interface DailyReport { date: string; summary: string; questions: number; resolved: number; domains: Record<string, number>; records?: Array<Record<string, string>> }
+export interface StorageStatus { database_path: string; backup_dir: string; backup_count: number; latest_backup: string | null; latest_backup_at: string | null }
 
 export const getKnowledge = (query = '') => api<KnowledgeData>(`/knowledge?query=${encodeURIComponent(query)}`)
 export const publishFaq = (body: { incident_id: string; question: string; answer: string }) => api<Faq>('/knowledge/faq', { method: 'POST', body: JSON.stringify(body) })
 export const listDailyReports = () => api<DailyReport[]>('/reports/daily')
 export const getDailyReport = (date: string) => api<DailyReport>(`/reports/daily/${date}`)
+export const getStorageStatus = () => api<StorageStatus>('/reports/storage')
+export const createBackup = () => api<StorageStatus>('/reports/backup', { method: 'POST' })
