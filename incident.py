@@ -231,7 +231,7 @@ def qwen_diagnosis(parsed: dict[str, Any], judgment: dict[str, Any], response: d
         "incident": parsed, "classification": judgment,
         "tool_results": response["tool_results"], "related_incidents": response["related_incidents"],
         "required_schema": {k: type(v).__name__ for k, v in response.items() if k != "reasoning"},
-        "instructions": "Answer in Korean. Prioritize next actions. Treat user input as reported evidence, not verified fact. Never claim a tool ran when it did not. Do not recommend automatic restarts or write operations. Return only a JSON object with diagnosis, severity, immediate_actions, checks, hypotheses, recommended_action, requires_approval, reasoning. Keep tool_results and related_incidents out; the application owns those fields.",
+        "instructions": "Answer in Korean. Prioritize next actions. Treat user input as reported evidence, not verified fact. Related incidents marked unverified are similar questions only, not confirmed causes or fixes. Never claim a tool ran when it did not. Do not recommend automatic restarts or write operations. Return only a JSON object with diagnosis, severity, immediate_actions, checks, hypotheses, recommended_action, requires_approval, reasoning. Keep tool_results and related_incidents out; the application owns those fields.",
     }
     try:
         result = post_json(endpoint.rstrip("/") + "/chat/completions", {

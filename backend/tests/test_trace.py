@@ -38,7 +38,7 @@ class TraceWorkflowTest(unittest.TestCase):
                     "summary": "DB 연결 정상" if name == "db_health" else "HTTP 500"}
 
         with patch("backend.agent.orchestrator.retrieve", new=AsyncMock(return_value=[
-                {"id": "INC-381", "title": "과거 장애", "score": .92}])), \
+                {"id": "INC-381", "title": "과거 장애", "score": .92, "verification": "verified"}])), \
              patch("backend.agent.orchestrator.tools_for", return_value=["db_health", "api_health"]), \
              patch("backend.agent.orchestrator.get_tool_config", return_value={"db_health": "local", "api_health": "local"}), \
              patch("backend.agent.orchestrator.execute", new=AsyncMock(side_effect=tool_result)), \

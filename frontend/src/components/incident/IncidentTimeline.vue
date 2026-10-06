@@ -6,7 +6,7 @@ function summary(event: TimelineEvent): string {
   const data = event.data
   if (event.type === 'user') return String(data.message || '')
   if (event.type === 'jev') { const c = data.classification as Record<string, unknown> | undefined; return `${c?.domain || 'UNKNOWN'}${c?.secondary ? ` → ${c.secondary}` : ''} · ${c?.severity || ''} / ${c?.complexity || ''}` }
-  if (event.type === 'retrieval') { const matches = data.matches as Array<{id:string;score?:number}> | undefined; const trace = data.trace as Record<string, unknown> | undefined; const timing = typeof trace?.duration_ms === 'number' ? ` · ${trace.duration_ms}ms` : ''; return (matches?.length ? matches.map(item => `${item.id}${item.score ? ` · 점수 ${item.score.toFixed(2)}` : ''}`).join(' · ') : '일치하는 과거 장애가 없습니다.') + timing }
+  if (event.type === 'retrieval') { const matches = data.matches as Array<{id:string;score?:number;verification?:string}> | undefined; const trace = data.trace as Record<string, unknown> | undefined; const timing = typeof trace?.duration_ms === 'number' ? ` · ${trace.duration_ms}ms` : ''; return (matches?.length ? matches.map(item => `${item.id} (${item.verification === 'verified' ? '확인됨' : '미검증'})${item.score ? ` · 점수 ${item.score.toFixed(2)}` : ''}`).join(' · ') : '일치하는 과거 장애가 없습니다.') + timing }
   if (event.type === 'tool_started') return `${data.tool} 실행 중`
   if (event.type === 'tool_result') { const result = data.result as Record<string, unknown> | undefined; const trace = data.trace as Record<string, unknown> | undefined; return `${data.tool} · ${result?.summary || result?.status || ''}${typeof trace?.duration_ms === 'number' ? ` · ${trace.duration_ms}ms` : ''}` }
   if (event.type === 'reasoning_started') return `${data.model} · ${data.complexity} 판단 진행 중`

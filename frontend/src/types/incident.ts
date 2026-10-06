@@ -26,7 +26,7 @@ export interface Hypothesis {
   rationale: string
 }
 
-export interface RaftMatch { id: string; title: string; summary: string; score: number | null }
+export interface RaftMatch { id: string; title: string; summary: string; score: number | null; verification: 'verified' | 'unverified' | 'unknown'; retrieval: 'hybrid' | 'lexical' | 'external' }
 export interface AgentAction { id: string; label: string; tool: string | null; requires_approval: boolean; status: string }
 export interface ClaimReference { eventId: number; relation: 'reported' | 'observed' | 'failed_check' | 'historical_match' | 'follow_up_check' | 'operator_verification' }
 export interface TraceClaim { id: string; text: string; verification: 'unverified' | 'operator_verified'; references: ClaimReference[]; createdAt: string }

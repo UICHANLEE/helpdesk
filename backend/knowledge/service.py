@@ -6,6 +6,7 @@ import re
 from collections import Counter
 from typing import Any
 
+from backend.knowledge import vector
 from backend.raft.sparse import rank
 from backend.storage import sqlite as storage
 
@@ -14,26 +15,49 @@ def signature(domain: str, diagnosis: str) -> str:
     return f"{domain.strip().upper()}:{re.sub(r'\s+', ' ', diagnosis.strip().lower())}"
 
 
-def search(query: str, limit: int = 5) -> list[dict[str, Any]]:
-    documents = storage.list_knowledge("resolved")
+def corpus_documents() -> list[dict[str, Any]]:
+    documents = storage.list_knowledge(limit=10000)
     faq = storage.list_faq()
-    corpus = [f"{item['question']} {item['situation']} {item['diagnosis']}" for item in documents]
-    corpus += [f"{item['question']} {item['answer']}" for item in faq]
+    result = []
+    for item in documents:
+        verified = item["status"] == "resolved"
+        content = f"{item['question']} {item['situation']}"
+        if verified:
+            content += f" {item['diagnosis']} {' '.join(item['actions'])}"
+        result.append({"id": item["incident_id"], "type": "incident", "question": item["question"],
+                       "answer": item["diagnosis"] if verified else "", "actions": item["actions"] if verified else [],
+                       "status": "verified" if verified else "unverified", "content": content.strip()})
+    for item in faq:
+        result.append({"id": f"FAQ-{item['id']}", "type": "faq", "question": item["question"],
+                       "answer": item["answer"], "actions": [], "status": "verified",
+                       "content": f"{item['question']} {item['answer']}"})
+    return result
+
+
+def search(query: str, limit: int = 5, exclude_id: str | None = None) -> list[dict[str, Any]]:
+    if not query.strip():
+        return []
+    documents = corpus_documents()
+    corpus = [item["content"] for item in documents]
+    try:
+        vector.sync(documents)
+        dense = vector.scores(query, documents)
+    except (OSError, ValueError, KeyError, OverflowError, TypeError):
+        dense = {}  # Ollama is optional; lexical search remains available.
+    sparse = dict(rank(query, corpus))
+    lexical_max = max(sparse.values(), default=0) or 1
     found = []
-    for index, score in rank(query, corpus):
-        if score <= 0:
+    for index, item in enumerate(documents):
+        if item["id"] == exclude_id:
             continue
-        if index < len(documents):
-            item = documents[index]
-            found.append({"id": item["incident_id"], "type": "incident", "question": item["question"],
-                          "answer": item["diagnosis"], "actions": item["actions"], "score": round(score, 3)})
-        else:
-            item = faq[index - len(documents)]
-            found.append({"id": f"FAQ-{item['id']}", "type": "faq", "question": item["question"],
-                          "answer": item["answer"], "actions": [], "score": round(score, 3)})
-        if len(found) >= limit:
-            break
-    return found
+        lexical = sparse.get(index, 0) / lexical_max
+        semantic = max(0.0, dense.get(item["id"], 0.0))
+        if not lexical and semantic < .45:
+            continue
+        score = .65 * semantic + .35 * lexical if dense else lexical
+        found.append({key: item[key] for key in ("id", "type", "question", "answer", "actions", "status")} |
+                     {"score": round(score, 3), "retrieval": "hybrid" if dense else "lexical"})
+    return sorted(found, key=lambda item: item["score"], reverse=True)[:limit]
 
 
 def frequent_errors(limit: int = 10) -> list[dict[str, Any]]:
@@ -62,4 +86,4 @@ def stats() -> dict[str, Any]:
     documents = storage.list_knowledge(limit=10000)
     domains = Counter(item["domain"] for item in documents)
     return {"questions": len(documents), "resolved_knowledge": sum(item["status"] == "resolved" for item in documents),
-            "faq_count": len(storage.list_faq()), "domains": dict(domains)}
+            "faq_count": len(storage.list_faq()), "domains": dict(domains), "vector": vector.status()}

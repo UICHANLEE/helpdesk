@@ -6,6 +6,7 @@ Vue 3 + TypeScript 화면과 FastAPI 서버를 이 컴퓨터에서 실행합니�
 
 ```bash
 ollama pull qwen3:14b-q4_K_M
+ollama pull qwen3-embedding:0.6b
 python3 -m venv .venv
 .venv/bin/python -m pip install -r backend/requirements.txt
 .venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8000
@@ -24,7 +25,7 @@ npm run dev
 ## 기록과 백업
 
 - 모든 새 질문과 Incident 이벤트는 `backend/data/raft.sqlite3`에 저장됩니다. 기존 로컬 데이터는 그대로 유지됩니다.
-- 사람이 근본 원인과 실제 성공한 조치를 확인해 해결 처리한 Incident와 게시된 FAQ를 다음 질문의 검색 근거로 사용합니다. 질문 기록의 누적과 모델 가중치 재학습은 별개입니다.
+- 새 질문도 유사 질문 검색을 위해 색인합니다. 사람이 근본 원인과 실제 성공한 조치를 확인한 Incident와 게시된 FAQ만 **확인된 해결 근거**로 사용합니다. 질문 기록의 누적과 모델 가중치 재학습은 별개입니다.
 - 질문·상황·진단·조치·확인된 해결 결과를 한국 시간 기준 날짜별로 집계합니다. `backend/reports/data/YYYY-MM-DD.xlsx`에 업무 요약과 질문 로그 시트를 만듭니다. 화면의 **Daily Reports**에서 날짜별 확인과 다운로드가 가능합니다.
 - 서버가 실행 중일 때 60초마다 SQLite의 일관된 복사본을 `backend/backups/raft-YYYY-MM-DD.sqlite3`에 갱신합니다. 이전 날짜의 백업은 보존합니다. **Daily Reports → 지금 백업**으로 즉시 복사할 수도 있습니다.
 - SQLite 원본, 백업, 엑셀, 비밀키는 Git에서 제외됩니다. 컴퓨터 전체가 손상될 상황에 대비하려면 `backend/data`, `backend/backups`, `backend/reports/data`를 개인 백업 디스크에 함께 복사하세요.
@@ -45,14 +46,15 @@ npm run dev
 ## 현재 RAG 저장소
 
 - SQLite의 `incidents`에 원본 질문과 상태, `events`에 조사 흐름, `knowledge`에 질문·상황·진단·조치의 검색용 복사본, `faq`에 게시된 답변을 저장합니다.
-- 검색 시 `knowledge` 중 **운영자가 해결을 확인한 행**과 게시된 FAQ를 모아 BM25 점수를 그때 계산합니다. 한국어는 연속된 두 글자 단위도 색인합니다. Top-3이 Qwen 판단 문맥으로 들어갑니다.
-- 현재는 임베딩 벡터, 영속적인 벡터 인덱스, FAISS 또는 pgvector가 없습니다. 따라서 'VDB'라기보다 **SQLite 원본 + 즉석 BM25 검색**입니다. 미해결 질문은 기록·빈발 오류 집계에는 남지만 검증된 답변으로 검색되지는 않습니다.
+- 로컬 Ollama의 `qwen3-embedding:0.6b`가 질문·상황·확인된 해결 내용과 FAQ를 벡터로 만들고 SQLite `knowledge_vectors`에 float32로 저장합니다. 내용이 바뀌면 해당 벡터만 갱신합니다. 모든 질문을 누적하며, 미해결 질문은 추정 진단·제안 조치를 제외하고 색인합니다.
+- 검색은 코사인 유사도와 한국어 두 글자 단위를 포함한 BM25를 결합합니다. 장애 진단에서는 현재 질문을 제외한 Top-3을 Qwen 문맥에 넣습니다. 미해결 질문은 **미검증 유사 질문**으로 명시하며 원인·해결 근거로 취급하지 않습니다. Ollama가 꺼져 있으면 BM25 검색으로 작동합니다.
+- 벡터는 로컬 SQLite에 영속 저장되며 전용 ANN 엔진은 사용하지 않습니다. 현재 규모에서는 전체 벡터를 비교합니다. 질문 수가 크게 늘어나면 FAISS나 sqlite-vec 같은 인덱스를 추가할 수 있습니다. 이 구조는 검색 시 문맥을 보강하며 Qwen 모델 자체를 재학습하지는 않습니다.
 
 ## 진단 연결
 
 - Jev: `secrets/typesafe_api_key.txt`의 키로 TypeSafe API에 분류를 요청합니다. 이 호출에는 입력한 장애 내용이 전송됩니다. 호출 실패 시 규칙 기반 분류를 표시합니다.
 - Qwen: 로컬 Ollama의 `qwen3:14b-q4_K_M`을 사용합니다. 모델을 실행할 수 없으면 규칙 기반 조치로 돌아갑니다.
-- RAFT: 확인된 로컬 해결 사례와 FAQ에서 Top-3을 검색합니다. 외부 검색을 별도로 연결할 때만 `RAFT_SEARCH_URL`을 사용합니다.
+- RAFT/RAG: 로컬 질문·해결 사례·FAQ에서 Top-3을 검색합니다. 외부 검색을 별도로 연결할 때만 `RAFT_SEARCH_URL`을 사용합니다.
 - 점검 도구: `RAFT_TOOL_URLS` 환경 변수에 읽기 전용 점검 API를 등록하면 사용합니다. 미등록 도구는 실행되지 않은 것으로 표시합니다.
 - 조치 승인/거절은 결정만 기록하며 실제 시스템 변경은 실행하지 않습니다.
 
@@ -67,7 +69,7 @@ npm run dev
 
 - `/diagnose`: 질문 입력과 진단
 - `/incidents`: Incident 목록, 조사 과정, 확인된 해결 내용
-- `/knowledge/raft`: 해결 사례·FAQ 검색
+- `/knowledge/raft`: 로컬 벡터와 키워드로 질문·해결 사례·FAQ 검색
 - `/faq`: 반복 오류와 FAQ 작성
 - `/reports`: 일별 요약, 엑셀, 로컬 백업
 - `GET /api/v1/reports/storage`: 저장소와 백업 상태

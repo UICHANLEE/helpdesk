@@ -93,7 +93,7 @@ async def investigate(incident_id: str, parsed: dict[str, Any], judgment: dict[s
         storage.save_state(state)
         retrieval_span = span(incident_id, "retrieval", "RAFT search")
         started = time.perf_counter()
-        matches = await retrieve(parsed, judgment)
+        matches = await retrieve(parsed, judgment, incident_id)
         state.raftMatches = [RaftMatch.model_validate(item) for item in matches]
         state.providerStatus["raft"] = "connected" if os.getenv("RAFT_SEARCH_URL") else "local_history"
         storage.save_state(state)
@@ -152,7 +152,7 @@ async def investigate(incident_id: str, parsed: dict[str, Any], judgment: dict[s
         state.currentStep = "act"
         user_event = next((event for event in storage.get_events(incident_id) if event["type"] == "user"), None)
         references = [ClaimReference(eventId=user_event["id"], relation="reported")] if user_event else []
-        if matches:
+        if any(match.get("verification") == "verified" for match in matches):
             references.append(ClaimReference(eventId=retrieval_event["id"], relation="historical_match"))
         references.extend(ClaimReference(eventId=event["id"], relation="observed" if event["data"]["result"]["status"] == "ok" else "failed_check")
                           for event in tool_events if event["data"]["result"]["status"] != "unconfigured")

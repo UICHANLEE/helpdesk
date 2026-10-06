@@ -61,6 +61,10 @@ def init_db() -> None:
             updated_rows INTEGER NOT NULL, inserted_rows INTEGER NOT NULL,
             unchanged_rows INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS knowledge_vectors (
+            document_id TEXT PRIMARY KEY, model TEXT NOT NULL, content_hash TEXT NOT NULL,
+            dimensions INTEGER NOT NULL, embedding BLOB NOT NULL, updated_at TEXT NOT NULL
+        );
         """)
         for row in db.execute("SELECT id, message, state, created_at, updated_at FROM incidents").fetchall():
             _index_incident(db, row["id"], row["message"], IncidentState.model_validate_json(row["state"]), row["updated_at"])
@@ -162,6 +166,30 @@ def save_faq(signature: str, question: str, answer: str) -> dict[str, Any]:
             updated_at=excluded.updated_at""", (signature, question, answer, now))
         row = db.execute("SELECT * FROM faq WHERE signature=?", (signature,)).fetchone()
     return dict(row)
+
+
+def list_vectors(model: str) -> list[dict[str, Any]]:
+    with _connection() as db:
+        rows = db.execute("SELECT * FROM knowledge_vectors WHERE model=?", (model,)).fetchall()
+    return [dict(row) for row in rows]
+
+
+def save_vectors(rows: list[tuple[str, str, str, int, bytes]]) -> None:
+    if not rows:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock, _connection() as db:
+        db.executemany("""INSERT INTO knowledge_vectors VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(document_id) DO UPDATE SET model=excluded.model,
+            content_hash=excluded.content_hash, dimensions=excluded.dimensions,
+            embedding=excluded.embedding, updated_at=excluded.updated_at""",
+            [(*row, now) for row in rows])
+
+
+def delete_stale_vectors(document_ids: set[str], model: str) -> None:
+    with _lock, _connection() as db:
+        existing = [row[0] for row in db.execute("SELECT document_id FROM knowledge_vectors WHERE model=?", (model,))]
+        db.executemany("DELETE FROM knowledge_vectors WHERE document_id=?", [(key,) for key in existing if key not in document_ids])
 
 
 def get_sheet_sync() -> dict[str, Any] | None:

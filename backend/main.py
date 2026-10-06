@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.api import actions, diagnose, incidents, infra, knowledge, reports, stream, tools
+from backend.knowledge import service as knowledge_service, vector
 from backend.reports import daily
 from backend.storage import backup
 from backend.storage.sqlite import init_db
@@ -19,6 +20,10 @@ from backend.storage.sqlite import init_db
 async def maintenance() -> None:
     last_export_at = None
     while True:
+        try:
+            await asyncio.to_thread(vector.sync, knowledge_service.corpus_documents())
+        except Exception:
+            pass  # Search falls back to lexical retrieval while Ollama is unavailable.
         try:
             await asyncio.to_thread(backup.backup_now)
         except Exception:

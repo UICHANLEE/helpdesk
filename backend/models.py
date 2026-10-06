@@ -43,6 +43,8 @@ class RaftMatch(BaseModel):
     title: str
     summary: str = ""
     score: float | None = None
+    verification: str = "unknown"
+    retrieval: str = "external"
 
 
 class AgentAction(BaseModel):
