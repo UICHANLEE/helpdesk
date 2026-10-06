@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api import actions, diagnose, incidents, infra, knowledge, reports, stream, sync, tools
-from backend.auth import gate, router as auth_router
+from backend.auth import cloud_ready, gate, router as auth_router
 from backend.reports import daily
 from backend.storage.sqlite import cloud_mode, init_db
 from backend.storage import supabase
@@ -28,9 +27,8 @@ async def maintenance() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    if os.getenv("VERCEL") and (not os.getenv("ACCESS_SESSION_SECRET") or not supabase.configured()):
-        raise RuntimeError("Vercel requires ACCESS_SESSION_SECRET and SUPABASE_SECRET_KEY")
-    init_db()
+    if cloud_ready():
+        init_db()
     worker = None if cloud_mode() else asyncio.create_task(maintenance())
     try:
         yield

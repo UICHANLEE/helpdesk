@@ -14,8 +14,9 @@ async function login() {
   try {
     const response = await fetch('/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code.value }) })
     if (!response.ok) {
-      const body = await response.json()
-      throw new Error(body.detail || '인증에 실패했습니다.')
+      const body = response.headers.get('content-type')?.includes('application/json')
+        ? await response.json().catch(() => null) : null
+      throw new Error(body?.detail || (response.status >= 500 ? '서버 연결이 준비되지 않았습니다. 관리자에게 문의하세요.' : '인증에 실패했습니다.'))
     }
     await router.replace(typeof route.query.next === 'string' && route.query.next.startsWith('/') ? route.query.next : '/dashboard')
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '인증에 실패했습니다.' }

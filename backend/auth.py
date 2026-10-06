@@ -29,6 +29,13 @@ def _configured_code() -> str:
     return os.getenv("ACCESS_CODE", "helpdesk")
 
 
+def cloud_ready() -> bool:
+    if not os.getenv("VERCEL"):
+        return True
+    from backend.storage.supabase import configured
+    return bool(os.getenv("ACCESS_SESSION_SECRET")) and configured()
+
+
 def _sign(expires: int, nonce: str) -> str:
     payload = f"{expires}.{nonce}"
     signature = hmac.new(_session_secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
@@ -62,6 +69,9 @@ def _same_origin(request: Request) -> bool:
 async def gate(request: Request, call_next):
     path = request.url.path
     if path.startswith("/api/") and not path.startswith("/api/v1/auth/"):
+        if not cloud_ready():
+            return JSONResponse({"detail": "서버 저장소 연결이 준비되지 않았습니다."}, status_code=503,
+                                headers={"Cache-Control": "no-store"})
         if not authenticated(request):
             return JSONResponse({"detail": "인증번호가 필요합니다."}, status_code=401, headers={"Cache-Control": "no-store"})
         if request.method not in ("GET", "HEAD", "OPTIONS") and not _same_origin(request):
@@ -74,11 +84,14 @@ async def gate(request: Request, call_next):
 
 @router.get("/auth/status")
 def status(request: Request) -> dict:
-    return {"authenticated": authenticated(request)}
+    ready = cloud_ready()
+    return {"authenticated": ready and authenticated(request), "ready": ready}
 
 
 @router.post("/auth/login")
 def login(body: LoginRequest, request: Request) -> JSONResponse:
+    if not cloud_ready():
+        raise HTTPException(status_code=503, detail="서버 저장소 연결이 준비되지 않았습니다. 관리자에게 문의하세요.")
     address = request.client.host if request.client else "unknown"
     now = time.monotonic()
     attempts = _attempts[address]
