@@ -6,6 +6,7 @@ Vue 3 + TypeScript 화면과 FastAPI 서버를 이 컴퓨터에서 실행합니�
 
 ```bash
 ollama pull qwen3:14b-q4_K_M
+ollama pull qwen3:4b-instruct-2507-q4_K_M
 ollama pull qwen3-embedding:0.6b
 python3 -m venv .venv
 .venv/bin/python -m pip install -r backend/requirements.txt
@@ -53,7 +54,7 @@ npm run dev
 ## 진단 연결
 
 - Jev: `secrets/typesafe_api_key.txt`의 키로 TypeSafe API에 분류를 요청합니다. 이 호출에는 입력한 장애 내용이 전송됩니다. 호출 실패 시 규칙 기반 분류를 표시합니다.
-- Qwen: 로컬 Ollama의 `qwen3:14b-q4_K_M`을 사용합니다. 모델을 실행할 수 없으면 규칙 기반 조치로 돌아갑니다.
+- Qwen: 일반 진단은 로컬 `qwen3:4b-instruct-2507-q4_K_M`, 복잡한 진단은 `qwen3:14b-q4_K_M`을 사용합니다. 간결한 JSON 응답과 비사고 모드로 대기 시간을 줄이고, 실행 모델과 소요 시간은 Incident Trace에 남깁니다. 모델을 실행할 수 없으면 규칙 기반 조치로 돌아갑니다. `QWEN_FAST_MODEL`과 `QWEN_MODEL` 환경 변수로 두 모델을 각각 변경할 수 있습니다.
 - RAFT/RAG: 로컬 질문·해결 사례·FAQ에서 Top-3을 검색합니다. 외부 검색을 별도로 연결할 때만 `RAFT_SEARCH_URL`을 사용합니다.
 - 점검 도구: `RAFT_TOOL_URLS` 환경 변수에 읽기 전용 점검 API를 등록하면 사용합니다. 미등록 도구는 실행되지 않은 것으로 표시합니다.
 - 조치 승인/거절은 결정만 기록하며 실제 시스템 변경은 실행하지 않습니다.

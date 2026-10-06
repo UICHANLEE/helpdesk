@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, AsyncIterator
 from uuid import uuid4
 
-from incident import get_tool_config, quick_response, qwen_model, qwen_model_available
+from incident import get_tool_config, quick_response, qwen_model_for, qwen_model_available
 
 from backend.agent.jev import classify
 from backend.llm.qwen import diagnose as qwen_diagnose
@@ -59,7 +59,7 @@ async def start(message: str) -> tuple[str, Classification]:
     classify_started = time.perf_counter()
     parsed, judgment = await classify(message)
     classify_duration_ms = round((time.perf_counter() - classify_started) * 1000)
-    qwen_ready = await asyncio.to_thread(qwen_model_available) if judgment["depth"] != "SIMPLE" else False
+    qwen_ready = await asyncio.to_thread(qwen_model_available, qwen_model_for(judgment)) if judgment["depth"] != "SIMPLE" else False
     classification = classification_from(judgment)
     quick = quick_response(parsed, judgment)
     state = IncidentState(
@@ -128,7 +128,7 @@ async def investigate(incident_id: str, parsed: dict[str, Any], judgment: dict[s
         context = quick_response(parsed, judgment)
         context["tool_results"] = results
         context["related_incidents"] = matches
-        llm_span = span(incident_id, "llm", qwen_model())
+        llm_span = span(incident_id, "llm", qwen_model_for(judgment))
         if state.providerStatus.get("qwen") == "pending":
             await publish(incident_id, "reasoning_started", {"model": llm_span["name"], "complexity": judgment["depth"], "trace": llm_span})
         started = time.perf_counter()
