@@ -53,6 +53,19 @@ class AgentAction(BaseModel):
     status: str = "proposed"
 
 
+class ClaimReference(BaseModel):
+    eventId: int
+    relation: str  # reported | observed | failed_check | historical_match | follow_up_check | operator_verification
+
+
+class TraceClaim(BaseModel):
+    id: str
+    text: str
+    verification: str = "unverified"  # unverified | operator_verified
+    references: list[ClaimReference] = Field(default_factory=list)
+    createdAt: str
+
+
 class IncidentState(BaseModel):
     id: str
     status: IncidentStatus = IncidentStatus.new
@@ -72,6 +85,8 @@ class IncidentState(BaseModel):
     recommendedAction: str = ""
     providerStatus: dict[str, str] = Field(default_factory=dict)
     resolution: dict[str, str] | None = None
+    traceId: str = ""
+    claims: list[TraceClaim] = Field(default_factory=list)
 
 
 class DiagnoseRequest(BaseModel):

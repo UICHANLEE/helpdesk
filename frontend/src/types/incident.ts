@@ -28,6 +28,8 @@ export interface Hypothesis {
 
 export interface RaftMatch { id: string; title: string; summary: string; score: number | null }
 export interface AgentAction { id: string; label: string; tool: string | null; requires_approval: boolean; status: string }
+export interface ClaimReference { eventId: number; relation: 'reported' | 'observed' | 'failed_check' | 'historical_match' | 'follow_up_check' | 'operator_verification' }
+export interface TraceClaim { id: string; text: string; verification: 'unverified' | 'operator_verified'; references: ClaimReference[]; createdAt: string }
 
 export interface IncidentState {
   id: string
@@ -48,6 +50,8 @@ export interface IncidentState {
   recommendedAction: string
   providerStatus: Record<string, string>
   resolution: { rootCause: string; successfulAction: string; note: string; verifiedAt: string } | null
+  traceId: string
+  claims: TraceClaim[]
 }
 
 export interface IncidentRecord { id: string; message: string; state: IncidentState; created_at: string; updated_at: string }

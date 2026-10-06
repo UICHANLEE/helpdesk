@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator
+from uuid import uuid4
 
 from incident import get_tool_config, quick_response, qwen_model, qwen_model_available
 
 from backend.agent.jev import classify
 from backend.llm.qwen import diagnose as qwen_diagnose
-from backend.models import AgentAction, Classification, Evidence, Hypothesis, IncidentState, IncidentStatus, RaftMatch
+from backend.models import AgentAction, ClaimReference, Classification, Evidence, Hypothesis, IncidentState, IncidentStatus, RaftMatch, TraceClaim
 from backend.raft.retriever import retrieve
 from backend.storage import sqlite as storage
 from backend.tools.registry import execute, tools_for
@@ -22,10 +25,17 @@ def classification_from(judgment: dict[str, Any]) -> Classification:
     return Classification(domain=judgment["primary"], secondary=judgment.get("secondary"), severity=judgment["severity"], complexity=judgment["depth"], source=judgment["source"], confidence=judgment.get("confidence"))
 
 
-async def publish(incident_id: str, event_type: str, data: dict[str, Any]) -> None:
-    storage.append_event(incident_id, event_type, data)
+async def publish(incident_id: str, event_type: str, data: dict[str, Any]) -> dict[str, Any]:
+    event = storage.append_event(incident_id, event_type, data)
     async with _conditions[incident_id]:
         _conditions[incident_id].notify_all()
+    return event
+
+
+def span(incident_id: str, kind: str, name: str) -> dict[str, Any]:
+    return {"trace_id": f"TR-{incident_id}", "span_id": uuid4().hex[:16],
+            "parent_span_id": f"TR-{incident_id}", "kind": kind, "name": name,
+            "started_at": datetime.now(timezone.utc).isoformat()}
 
 
 async def stream(incident_id: str, after_id: int = 0) -> AsyncIterator[dict[str, Any] | None]:
@@ -45,7 +55,10 @@ async def stream(incident_id: str, after_id: int = 0) -> AsyncIterator[dict[str,
 
 
 async def start(message: str) -> tuple[str, Classification]:
+    classify_started_at = datetime.now(timezone.utc).isoformat()
+    classify_started = time.perf_counter()
     parsed, judgment = await classify(message)
+    classify_duration_ms = round((time.perf_counter() - classify_started) * 1000)
     qwen_ready = await asyncio.to_thread(qwen_model_available) if judgment["depth"] != "SIMPLE" else False
     classification = classification_from(judgment)
     quick = quick_response(parsed, judgment)
@@ -58,8 +71,12 @@ async def start(message: str) -> tuple[str, Classification]:
         providerStatus={"jev": judgment["source"], "raft": "pending", "qwen": "pending" if qwen_ready else "skipped" if judgment["depth"] == "SIMPLE" else "unavailable"},
     )
     incident_id = storage.create_incident(message, state)
-    await publish(incident_id, "user", {"message": message})
-    await publish(incident_id, "jev", {"classification": classification.model_dump(), "parsed": {k: v for k, v in parsed.items() if k != "text"}})
+    state.traceId = f"TR-{incident_id}"
+    storage.save_state(state)
+    await publish(incident_id, "user", {"message": message, "trace_id": state.traceId})
+    await publish(incident_id, "jev", {"classification": classification.model_dump(), "parsed": {k: v for k, v in parsed.items() if k != "text"},
+        "trace": {**span(incident_id, "route", classification.source), "started_at": classify_started_at,
+                  "ended_at": datetime.now(timezone.utc).isoformat(), "duration_ms": classify_duration_ms, "status": "ok"}})
     task = asyncio.create_task(investigate(incident_id, parsed, judgment))
     _tasks.add(task)
     task.add_done_callback(_tasks.discard)
@@ -74,34 +91,49 @@ async def investigate(incident_id: str, parsed: dict[str, Any], judgment: dict[s
     try:
         state.currentStep = "retrieve"
         storage.save_state(state)
+        retrieval_span = span(incident_id, "retrieval", "RAFT search")
+        started = time.perf_counter()
         matches = await retrieve(parsed, judgment)
         state.raftMatches = [RaftMatch.model_validate(item) for item in matches]
         state.providerStatus["raft"] = "connected" if os.getenv("RAFT_SEARCH_URL") else "local_history"
         storage.save_state(state)
-        await publish(incident_id, "retrieval", {"matches": [match.model_dump() for match in state.raftMatches], "status": state.providerStatus["raft"]})
+        retrieval_event = await publish(incident_id, "retrieval", {"matches": [match.model_dump() for match in state.raftMatches], "status": state.providerStatus["raft"],
+            "trace": {**retrieval_span, "ended_at": datetime.now(timezone.utc).isoformat(),
+                      "duration_ms": round((time.perf_counter() - started) * 1000),
+                      "status": "ok" if matches else "empty", "result_count": len(matches), "index_source": state.providerStatus["raft"]}})
 
         tools = tools_for(judgment)
         configured_tools = get_tool_config()
         results: list[dict[str, Any]] = []
+        tool_events: list[dict[str, Any]] = []
         for tool in tools:
+            tool_span = span(incident_id, "tool", tool)
             if tool in configured_tools:
-                await publish(incident_id, "tool_started", {"tool": tool})
+                await publish(incident_id, "tool_started", {"tool": tool, "trace": tool_span})
+            started = time.perf_counter()
             result = await execute(tool, parsed)
+            duration_ms = round((time.perf_counter() - started) * 1000)
             results.append(result)
-            evidence = Evidence(id=f"E{len(results)}", source=tool, summary=str(result["summary"]), status="confirmed" if result["status"] == "ok" else "unavailable", data=result.get("data") if isinstance(result.get("data"), dict) else None)
+            evidence_status = "confirmed" if result["status"] == "ok" else "failed" if result["status"] == "error" else "unavailable"
+            evidence = Evidence(id=f"E{len(results)}", source=tool, summary=str(result["summary"]), status=evidence_status, data=result.get("data") if isinstance(result.get("data"), dict) else None)
             if evidence.status == "confirmed":
                 state.confirmedFacts.append(evidence)
             storage.save_state(state)
-            await publish(incident_id, "tool_result", {"tool": tool, "result": result, "evidence": evidence.model_dump()})
+            tool_events.append(await publish(incident_id, "tool_result", {"tool": tool, "result": result, "evidence": evidence.model_dump(),
+                "trace": {**tool_span, "ended_at": datetime.now(timezone.utc).isoformat(),
+                          "duration_ms": duration_ms, "status": result["status"]}}))
 
         state.currentStep = "reason"
         storage.save_state(state)
         context = quick_response(parsed, judgment)
         context["tool_results"] = results
         context["related_incidents"] = matches
+        llm_span = span(incident_id, "llm", qwen_model())
         if state.providerStatus.get("qwen") == "pending":
-            await publish(incident_id, "reasoning_started", {"model": qwen_model(), "complexity": judgment["depth"]})
+            await publish(incident_id, "reasoning_started", {"model": llm_span["name"], "complexity": judgment["depth"], "trace": llm_span})
+        started = time.perf_counter()
         answer = await qwen_diagnose(parsed, judgment, context)
+        llm_duration_ms = round((time.perf_counter() - started) * 1000)
         final = answer or context
         state.providerStatus["qwen"] = "connected" if answer else "skipped" if judgment["depth"] == "SIMPLE" else "unavailable"
         state.diagnosis = str(final.get("diagnosis") or context["diagnosis"])
@@ -118,10 +150,21 @@ async def investigate(incident_id: str, parsed: dict[str, Any], judgment: dict[s
         state.actions = [AgentAction(id=f"{incident_id}-A1", label=state.recommendedAction, requires_approval=bool(final.get("requires_approval", False)))]
         state.status = IncidentStatus.action_required
         state.currentStep = "act"
+        user_event = next((event for event in storage.get_events(incident_id) if event["type"] == "user"), None)
+        references = [ClaimReference(eventId=user_event["id"], relation="reported")] if user_event else []
+        if matches:
+            references.append(ClaimReference(eventId=retrieval_event["id"], relation="historical_match"))
+        references.extend(ClaimReference(eventId=event["id"], relation="observed" if event["data"]["result"]["status"] == "ok" else "failed_check")
+                          for event in tool_events if event["data"]["result"]["status"] != "unconfigured")
+        state.claims = [TraceClaim(id=f"{incident_id}-C1", text=state.diagnosis, verification="unverified", references=references,
+                                   createdAt=datetime.now(timezone.utc).isoformat())]
         storage.save_state(state)
-        await publish(incident_id, "reasoning", {"trace": state.reasoningTrace, "hypotheses": [item.model_dump() for item in state.hypotheses], "provider": state.providerStatus["qwen"]})
+        await publish(incident_id, "reasoning", {"trace": state.reasoningTrace, "hypotheses": [item.model_dump() for item in state.hypotheses], "provider": state.providerStatus["qwen"],
+            "span": {**llm_span, "ended_at": datetime.now(timezone.utc).isoformat(),
+                     "duration_ms": llm_duration_ms, "status": state.providerStatus["qwen"], "model": llm_span["name"]}})
         await publish(incident_id, "action", {"diagnosis": state.diagnosis, "immediate_actions": state.immediateActions, "recommended_action": state.recommendedAction, "requires_approval": False})
     except Exception as error:
         state.providerStatus["investigation"] = "error"
         storage.save_state(state)
-        await publish(incident_id, "error", {"message": "조사 흐름을 완료하지 못했습니다.", "kind": type(error).__name__})
+        await publish(incident_id, "error", {"message": "조사 흐름을 완료하지 못했습니다.",
+            "kind": type(error).__name__, "stage": state.currentStep, "trace_id": state.traceId})

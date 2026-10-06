@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException, Query
 from datetime import datetime, timezone
+import time
 
 from backend.storage import sqlite as storage
-from backend.models import IncidentState, StatusUpdateRequest
-from backend.agent.orchestrator import publish
+from backend.models import ClaimReference, IncidentState, StatusUpdateRequest, TraceClaim
+from backend.agent.orchestrator import publish, span
+from backend.observability.trace import graph
 
 router = APIRouter()
 
@@ -36,8 +38,22 @@ def get_events(incident_id: str) -> list[dict]:
     return storage.get_events(incident_id)
 
 
+@router.get("/incidents/{incident_id}/trace")
+def get_trace(incident_id: str) -> dict:
+    return graph(require_incident(incident_id), storage.get_events(incident_id))
+
+
+@router.get("/traces/{trace_id}")
+def find_trace(trace_id: str) -> dict:
+    if not trace_id.startswith("TR-INC-"):
+        raise HTTPException(status_code=404, detail="Trace not found")
+    return get_trace(trace_id[3:])
+
+
 @router.patch("/incidents/{incident_id}/status")
 async def update_status(incident_id: str, request: StatusUpdateRequest) -> dict:
+    started = time.perf_counter()
+    verification_span = span(incident_id, "verification", "operator status update")
     incident = require_incident(incident_id)
     state = IncidentState.model_validate(incident["state"])
     if request.status.value == "resolved":
@@ -49,6 +65,14 @@ async def update_status(incident_id: str, request: StatusUpdateRequest) -> dict:
     state.status = request.status
     state.currentStep = "verify" if request.status.value in ("verifying", "resolved") else state.currentStep
     storage.save_state(state)
-    await publish(incident_id, "status_changed", {"status": request.status.value, "manual": True,
-                                                   "resolution": state.resolution if request.status.value == "resolved" else None})
+    event = await publish(incident_id, "status_changed", {"status": request.status.value, "manual": True,
+        "resolution": state.resolution if request.status.value == "resolved" else None,
+        "trace": {**verification_span, "ended_at": datetime.now(timezone.utc).isoformat(),
+                  "duration_ms": round((time.perf_counter() - started) * 1000),
+                  "status": "operator_verified" if request.status.value == "resolved" else "updated"}})
+    if request.status.value == "resolved":
+        state.claims.append(TraceClaim(id=f"{incident_id}-C{len(state.claims) + 1}", text=request.root_cause.strip(),
+            verification="operator_verified", references=[ClaimReference(eventId=event["id"], relation="operator_verification")],
+            createdAt=datetime.now(timezone.utc).isoformat()))
+        storage.save_state(state)
     return state.model_dump()

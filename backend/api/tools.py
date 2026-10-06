@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException
+import time
+from datetime import datetime, timezone
 
-from backend.agent.orchestrator import publish
-from backend.models import Evidence, IncidentState, ToolExecuteRequest
+from backend.agent.orchestrator import publish, span
+from backend.models import ClaimReference, Evidence, IncidentState, ToolExecuteRequest
 from backend.storage import sqlite as storage
 from backend.tools.registry import ALLOWED_TOOLS, execute
 from incident import get_tool_config, parse_incident
@@ -23,13 +25,24 @@ async def execute_tool(request: ToolExecuteRequest) -> dict:
         raise HTTPException(status_code=404, detail="Incident not found")
     if request.tool not in ALLOWED_TOOLS:
         raise HTTPException(status_code=400, detail="Unknown or non-read-only tool")
+    tool_span = span(request.incident_id, "tool", request.tool)
     if request.tool in get_tool_config():
-        await publish(request.incident_id, "tool_started", {"tool": request.tool, "manual": True})
+        await publish(request.incident_id, "tool_started", {"tool": request.tool, "manual": True, "trace": tool_span})
+    started = time.perf_counter()
     result = await execute(request.tool, parse_incident(incident["message"]))
+    duration_ms = round((time.perf_counter() - started) * 1000)
     state = IncidentState.model_validate(incident["state"])
-    evidence = Evidence(id=f"E{len(state.confirmedFacts) + 1}", source=request.tool, summary=str(result["summary"]), status="confirmed" if result["status"] == "ok" else "unavailable", data=result.get("data") if isinstance(result.get("data"), dict) else None)
+    evidence_status = "confirmed" if result["status"] == "ok" else "failed" if result["status"] == "error" else "unavailable"
+    evidence = Evidence(id=f"E{len(state.confirmedFacts) + 1}", source=request.tool, summary=str(result["summary"]), status=evidence_status, data=result.get("data") if isinstance(result.get("data"), dict) else None)
     if evidence.status == "confirmed":
         state.confirmedFacts.append(evidence)
         storage.save_state(state)
-    await publish(request.incident_id, "tool_result", {"tool": request.tool, "result": result, "evidence": evidence.model_dump(), "manual": True})
+    event = await publish(request.incident_id, "tool_result", {"tool": request.tool, "result": result, "evidence": evidence.model_dump(), "manual": True,
+        "trace": {**tool_span, "ended_at": datetime.now(timezone.utc).isoformat(),
+                  "duration_ms": duration_ms, "status": result["status"]}})
+    if result["status"] != "unconfigured" and state.status.value != "resolved":
+        claim = next((item for item in reversed(state.claims) if item.verification == "unverified"), None)
+        if claim:
+            claim.references.append(ClaimReference(eventId=event["id"], relation="follow_up_check"))
+            storage.save_state(state)
     return result
