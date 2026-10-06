@@ -1,7 +1,8 @@
 """Stable, keyed rows for the SMC-Helpdesk Google Sheet.
 
 Run ``.venv/bin/python -m backend.sheets.snapshot`` from the repository root.
-The output is JSON. It contains local records only and never includes API keys.
+The output is JSON. It reads incident and FAQ records, not configured key files.
+Text entered in a question is exported as written, so avoid entering secrets.
 """
 
 from __future__ import annotations
