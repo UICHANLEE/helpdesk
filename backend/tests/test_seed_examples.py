@@ -13,6 +13,7 @@ from backend.api.knowledge import FaqRequest, publish_faq
 from backend.api.incidents import review_example
 from backend.agent.orchestrator import rehearse_example
 from backend.knowledge.seed_examples import load_cases, seed_examples
+from backend.knowledge.generate_scenarios import build_cases, load_patterns
 from backend.knowledge.service import corpus_documents, frequent_errors, stats
 from backend.observability.trace import graph
 from backend.reports import daily
@@ -31,19 +32,21 @@ class ExampleSeedTest(unittest.TestCase):
         storage.DB_PATH = self.old_path
         self.temp.cleanup()
 
-    def test_100_examples_are_idempotent_and_excluded_from_operational_reporting(self) -> None:
-        self.assertEqual(len(load_cases()), 100)
+    def test_1000_examples_are_idempotent_and_excluded_from_operational_reporting(self) -> None:
+        self.assertEqual(len(load_patterns()), 100)
+        self.assertEqual(len(build_cases()), 900)
+        self.assertEqual(len(load_cases()), 1000)
         first = seed_examples(index_vectors=False)
-        self.assertEqual(first["created"], 100)
+        self.assertEqual(first["created"], 1000)
         self.assertEqual(seed_examples(index_vectors=False)["created"], 0)
         examples = storage.list_incidents("examples")
-        self.assertEqual(len(examples), 100)
+        self.assertEqual(len(examples), 1000)
         self.assertEqual(storage.list_incidents(), [])
-        self.assertEqual(stats()["example_count"], 100)
+        self.assertEqual(stats()["example_count"], 1000)
         self.assertEqual(stats()["resolved_knowledge"], 0)
         self.assertEqual(len(corpus_documents()), 0)
         self.assertEqual(frequent_errors(), [])
-        self.assertEqual(len({item["message"] for item in examples}), 100)
+        self.assertEqual(len({item["message"] for item in examples}), 1000)
         sample = examples[0]
         self.assertEqual(sample["state"]["status"], "new")
         self.assertEqual(sample["state"]["examplePhase"], "seeded")
@@ -68,7 +71,7 @@ class ExampleRehearsalTest(unittest.IsolatedAsyncioTestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.old_path = storage.DB_PATH
         storage.DB_PATH = Path(self.temp.name) / "rehearsal.sqlite3"
-        seed_examples(index_vectors=False)
+        seed_examples(index_vectors=False, additional_path=None)
 
     async def asyncTearDown(self) -> None:
         storage.DB_PATH = self.old_path

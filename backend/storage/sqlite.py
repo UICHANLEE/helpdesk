@@ -169,7 +169,7 @@ def get_incident(incident_id: str) -> dict[str, Any] | None:
 
 def list_incidents(status: str | None = None) -> list[dict[str, Any]]:
     with _connection() as db:
-        rows = db.execute("SELECT * FROM incidents ORDER BY created_at DESC LIMIT 1000").fetchall()
+        rows = db.execute("SELECT * FROM incidents ORDER BY created_at DESC").fetchall()
     incidents = [{"id": row["id"], "message": row["message"], "state": json.loads(row["state"]), "created_at": row["created_at"], "updated_at": row["updated_at"]} for row in rows]
     incidents.sort(key=lambda item: item["state"].get("origin") == "example")
     if status == "examples":

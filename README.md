@@ -33,7 +33,7 @@ SQLite 원본·백업·엑셀 파일은 호스트의 `backend/data`, `backend/ba
 ## 기록과 백업
 
 - 모든 새 질문과 Incident 이벤트는 `backend/data/raft.sqlite3`에 저장됩니다. 기존 로컬 데이터는 그대로 유지됩니다.
-- 연습용 질문 100건은 `/incidents/examples`에서 별도로 봅니다. 이 사례는 실제 처리 실적이 아니므로 Dashboard·Daily Reports·Excel·Google Sheet·FAQ 빈도와 게시 후보에 포함되지 않습니다.
+- 연습용 질문 1,000건은 `/incidents/examples`에서 별도로 봅니다. 이 사례는 실제 처리 실적이 아니므로 Dashboard·Daily Reports·Excel·Google Sheet·FAQ 빈도와 게시 후보에 포함되지 않습니다.
 - 새 질문도 유사 질문 검색을 위해 색인합니다. 사람이 근본 원인과 실제 성공한 조치를 확인한 Incident와 게시된 FAQ만 **확인된 해결 근거**로 사용합니다. 질문 기록의 누적과 모델 가중치 재학습은 별개입니다.
 - 질문·상황·진단·조치·확인된 해결 결과를 한국 시간 기준 날짜별로 집계합니다. `backend/reports/data/YYYY-MM-DD.xlsx`에 업무 요약과 질문 로그 시트를 만듭니다. 화면의 **Daily Reports**에서 날짜별 확인과 다운로드가 가능합니다.
 - 서버가 실행 중일 때 60초마다 SQLite의 일관된 복사본을 `backend/backups/raft-YYYY-MM-DD.sqlite3`에 갱신합니다. 이전 날짜의 백업은 보존합니다. **Daily Reports → 지금 백업**으로 즉시 복사할 수도 있습니다.
@@ -69,11 +69,13 @@ SQLite 원본·백업·엑셀 파일은 호스트의 `backend/data`, `backend/ba
 - 정답 문서가 있는 예시는 문서의 원인·조치를 Incident ID와 함께 답합니다. 정답 문서가 없는 예시는 논문의 암기형 답변 대신 **근거 부족 시 답변 유보**를 학습합니다. 운영 장애에서 근거 없는 확신을 줄이기 위한 안전 변형입니다.
 - 현재 5개의 실제 확인 사례는 재학습하기에 부족합니다. 상태 API의 30건 문턱은 운영상 최소 경고 기준일 뿐 품질 보증이 아닙니다. 학습 전에는 후보의 민감 정보와 잘못 고른 방해 문서를 사람이 검토하고, 질문 유형을 분리한 검증 세트로 기존 Qwen+RAG 대비 평가해야 합니다. 현재 Qwen3 14B Q4 가중치는 변경되지 않았습니다.
 
-### 학습용 사례 100건
+### 학습용 사례 1,000건
 
-- `backend/knowledge/example_cases.tsv`에 대화 기반 50건과 일반 운영 사례 50건을 정리했습니다. 대화 기반 사례는 현재 HelpDesk 대화, 접근 가능한 다른 작업의 대화·요약, Obsidian의 ChatGPT 대화 정리 노트에서 확인된 **주제**를 바탕으로 구성했습니다. 모든 과거 ChatGPT 대화의 원문을 읽을 수 있었던 것은 아닙니다.
+- `backend/knowledge/example_cases.tsv`에는 기존 대화 기반 50건과 일반 운영 사례 50건이 있습니다. 대화 기반 사례는 현재 HelpDesk 대화, 접근 가능한 다른 작업의 대화·요약, Obsidian의 ChatGPT 대화 정리 노트에서 확인된 **주제**를 바탕으로 구성했습니다. 모든 과거 ChatGPT 대화의 원문을 읽을 수 있었던 것은 아닙니다.
+- `backend/knowledge/scenario_patterns.tsv`에 11개 영역의 장애 패턴 100개를 정리하고 `backend/knowledge/generate_scenarios.py`로 상황별 질문 500건, 표현 변형 200건, 정보 부족 질문 200건을 생성했습니다. 따라서 추가된 900건은 서로 다른 900개 원인이 아니라 **100개 원인의 다른 상황·표현·증거 수준**을 다룹니다. 생성 결과는 `backend/knowledge/scenario_cases.tsv`에 저장됩니다.
 - 질문은 먼저 답을 숨긴 상태로 등록합니다. `/incidents/examples`에서 각 Incident의 **질문 진단 실행**을 누르면 Jev → RAFT → 연결된 점검 도구 → 로컬 Qwen 진단을 실제로 수행하고 이벤트와 첫 판단을 저장합니다. 완료 후 **판단 수정**에서 참고 답안과 비교해 원인·조치를 고치면 그때 연습 지식으로 검색됩니다. 참고 답안은 가상 시나리오이며 실제 장애를 확인했다는 뜻이 아닙니다.
-- 100건을 순서대로 연습하려면 `.venv/bin/python -m backend.knowledge.rehearse_examples --limit 100`을 실행합니다. Qwen이 성공하지 않은 사례는 자동 수정하지 않고 검토 대기 상태로 남깁니다. 이미 완료한 사례는 건너뛰므로 중단 후 재실행할 수 있습니다.
+- 목록에서 영역·질문 유형을 골라 50건씩 탐색할 수 있습니다. 개별 질문의 **질문 진단 실행**으로 실제 모델 판단을 기다리고, 검토 후 원인·조치를 기록합니다. 기존에 검토한 사례의 결과는 시드 재실행 시 유지됩니다. 다량의 Qwen 진단을 한꺼번에 실행하지 않습니다.
+- 일부를 순서대로 연습하려면 `.venv/bin/python -m backend.knowledge.rehearse_examples --limit 20`처럼 건수를 지정합니다. Qwen이 성공하지 않은 사례는 자동 수정하지 않고 검토 대기 상태로 남깁니다. 이미 완료한 사례는 건너뛰므로 중단 후 재실행할 수 있습니다.
 - 재입력이 필요하면 `.venv/bin/python -m backend.knowledge.seed_examples`를 실행합니다. `seedKey`로 중복 생성을 막고, 처음 입력할 때 `backend/backups/pre-example-seed-*.sqlite3`에 기존 DB 복사본을 남깁니다. 로컬 DB 파일은 Git에 포함되지 않습니다.
 
 ## 진단 연결
@@ -95,7 +97,7 @@ SQLite 원본·백업·엑셀 파일은 호스트의 `backend/data`, `backend/ba
 
 - `/diagnose`: 질문 입력과 진단
 - `/incidents`: 실제 Incident 목록, 조사 과정, 확인된 해결 내용
-- `/incidents/examples`: 연습 질문 100건과 진단·수정 진행 상태
+- `/incidents/examples`: 연습 질문 1,000건과 진단·수정 진행 상태
 - `/knowledge/raft`: 로컬 벡터와 키워드로 질문·해결 사례·FAQ 검색
 - `/faq`: 반복 오류와 FAQ 작성
 - `/reports`: 일별 요약, 엑셀, 로컬 백업

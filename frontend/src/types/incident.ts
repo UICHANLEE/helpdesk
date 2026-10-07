@@ -39,7 +39,7 @@ export interface IncidentState {
   origin: 'live' | 'example'
   seedKey: string | null
   examplePhase: 'seeded' | 'investigating' | 'awaiting_review' | 'reviewed' | null
-  exampleReference: { situation: string; rootCause: string; successfulAction: string } | null
+  exampleReference: { situation: string; rootCause: string; successfulAction: string; domain?: string; kind?: string } | null
   firstDiagnosis: string | null
   firstActions: string[]
   status: IncidentStatus

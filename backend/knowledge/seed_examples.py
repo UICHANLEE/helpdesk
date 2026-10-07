@@ -1,4 +1,4 @@
-"""Install 100 question prompts awaiting a real investigation and review."""
+"""Install fictional question cards awaiting a real investigation and review."""
 
 from __future__ import annotations
 
@@ -15,17 +15,25 @@ from backend.models import IncidentState, IncidentStatus
 from backend.storage import sqlite as storage
 
 CASES_PATH = Path(__file__).with_name("example_cases.tsv")
+SCENARIOS_PATH = Path(__file__).with_name("scenario_cases.tsv")
 BACKUP_DIR = Path(__file__).resolve().parents[1] / "backups"
 
 
-def load_cases(path: Path = CASES_PATH) -> list[dict[str, str]]:
-    with path.open(encoding="utf-8", newline="") as source:
-        cases = list(csv.DictReader(source, delimiter="\t"))
+def load_cases(path: Path = CASES_PATH, additional_path: Path | None = SCENARIOS_PATH) -> list[dict[str, str]]:
+    cases: list[dict[str, str]] = []
+    for source_path in (path, additional_path):
+        if source_path is None:
+            continue
+        with source_path.open(encoding="utf-8", newline="") as source:
+            cases.extend(csv.DictReader(source, delimiter="\t"))
     groups = Counter(item["group"] for item in cases)
-    if groups != {"conversation": 50, "general": 50}:
-        raise ValueError(f"Expected 50 conversation and 50 general cases, got {groups}")
+    expected = {"conversation": 50, "general": 50}
+    if additional_path is not None:
+        expected.update({"scenario": 500, "variation": 200, "uncertain": 200})
+    if groups != expected:
+        raise ValueError(f"Unexpected practice case distribution: {groups}")
     questions = [item["question"].strip() for item in cases]
-    if len(set(questions)) != 100:
+    if len(set(questions)) != len(cases):
         raise ValueError("Example questions must be unique")
     required = ("group", "domain", "question", "situation", "root_cause", "successful_action")
     if any(not all(item.get(key, "").strip() for key in required) or item["domain"] not in CATEGORIES for item in cases):
@@ -42,24 +50,28 @@ def backup_before_seed() -> Path:
     return path
 
 
-def seed_examples(path: Path = CASES_PATH, index_vectors: bool = True) -> dict[str, object]:
-    cases = load_cases(path)
+def seed_examples(path: Path = CASES_PATH, index_vectors: bool = True,
+                  additional_path: Path | None = SCENARIOS_PATH) -> dict[str, object]:
+    cases = load_cases(path, additional_path)
     storage.init_db()
     existing = {item["state"].get("seedKey"): item for item in storage.list_all_incidents()
                 if item["state"].get("origin") == "example"}
     created: list[str] = []
     repaired = 0
     for group, group_cases in ((name, [case for case in cases if case["group"] == name])
-                               for name in ("conversation", "general")):
+                               for name in ("conversation", "general", "scenario", "variation", "uncertain")):
         for number, case in enumerate(group_cases, 1):
             key = f"{group}-{number:03d}"
             prior = existing.get(key)
             reference = {"situation": case["situation"], "rootCause": case["root_cause"],
-                         "successfulAction": case["successful_action"]}
+                         "successfulAction": case["successful_action"], "domain": case["domain"], "kind": group}
             if prior:
                 state = IncidentState.model_validate(prior["state"])
                 incident_id = prior["id"]
                 if state.examplePhase:
+                    if state.exampleReference and ("domain" not in state.exampleReference or "kind" not in state.exampleReference):
+                        state.exampleReference = {**state.exampleReference, "domain": case["domain"], "kind": group}
+                        storage.save_state(state)
                     continue
                 repaired += 1
             else:
