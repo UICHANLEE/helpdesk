@@ -5,9 +5,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from incident import jev_judgment, parse_incident, rule_judgment
 from backend.agent.orchestrator import investigate
 from backend.knowledge.fallback import from_verified_history
-from backend.knowledge.reassess import reassess
+from backend.knowledge.reassess import reassess, reclassify_explicit_llm
 from backend.models import Classification, IncidentState, IncidentStatus, RaftMatch
 from backend.storage import sqlite as storage
 
@@ -67,6 +68,29 @@ class HistoryFallbackTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("INC-1012", updated["diagnosis"])
         self.assertEqual(updated["status"], "action_required")
         self.assertEqual(storage.get_events(incident_id)[-1]["type"], "historical_reassessment")
+
+    def test_explicit_llm_questions_override_unknown_route_and_reclassify(self) -> None:
+        questions = ["모델 응답이 평소보다 느려졌을 때 무엇부터 확인해야 하나요?",
+                     "특정 시간대에만 모델 응답 속도가 느려지는 이유는 무엇인가요?",
+                     "점심 이후에 답변 속도가 너무 늦어지는ㄴ데 무슨 문제 있는거 아니에요?",
+                     "포맷 드리프트를 어떻게 대처할 수 있어요?"]
+        for question in questions:
+            parsed = parse_incident(question)
+            fallback = rule_judgment(parsed)
+            self.assertEqual(fallback["primary"], "LLM")
+            with patch("incident.typesafe_key", return_value="test"), \
+                 patch("incident.post_json", return_value={"answers": {
+                     "primary": {"choice": "UNKNOWN", "confidence": 0.9},
+                     "secondary": {"choice": "UNKNOWN"}, "depth": {"choice": "SIMPLE"}}}):
+                routed = jev_judgment(parsed, fallback)
+            self.assertEqual(routed["primary"], "LLM")
+            self.assertEqual(routed["source"], "rules_override")
+        incident_id = storage.create_incident(questions[-1], IncidentState(
+            id="", classification=Classification(domain="UNKNOWN")))
+        self.assertTrue(reclassify_explicit_llm(incident_id))
+        self.assertFalse(reclassify_explicit_llm(incident_id))
+        self.assertEqual(storage.get_incident(incident_id)["state"]["classification"]["domain"], "LLM")
+        self.assertEqual(storage.get_events(incident_id)[-1]["type"], "classification_revised")
 
 
 if __name__ == "__main__":

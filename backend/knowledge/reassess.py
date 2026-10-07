@@ -5,10 +5,10 @@ from __future__ import annotations
 import sys
 from datetime import datetime, timezone
 
-from incident import PLAYBOOKS
+from incident import PLAYBOOKS, parse_incident, rule_judgment
 
 from backend.knowledge.fallback import from_verified_history
-from backend.models import AgentAction, ClaimReference, IncidentState, IncidentStatus, TraceClaim
+from backend.models import AgentAction, ClaimReference, Classification, IncidentState, IncidentStatus, TraceClaim
 from backend.storage import sqlite as storage
 
 
@@ -50,6 +50,27 @@ def reassess(incident_id: str) -> bool:
     return True
 
 
+def reclassify_explicit_llm(incident_id: str) -> bool:
+    record = storage.get_incident(incident_id)
+    if not record:
+        return False
+    state = IncidentState.model_validate(record["state"])
+    if not state.classification or state.classification.domain != "UNKNOWN":
+        return False
+    judgment = rule_judgment(parse_incident(record["message"]))
+    if judgment["primary"] != "LLM":
+        return False
+    state.classification = Classification(domain="LLM", severity=state.classification.severity,
+                                          complexity=state.classification.complexity, source="rules_override")
+    storage.append_event(incident_id, "classification_revised", {
+        "previous_domain": "UNKNOWN", "domain": "LLM", "source": "explicit_question_signal",
+    })
+    storage.save_state(state)
+    return True
+
+
 if __name__ == "__main__":
     for target in sys.argv[1:]:
-        print(f"{target}: {'updated' if reassess(target) else 'unchanged'}")
+        revised = reclassify_explicit_llm(target)
+        updated = reassess(target)
+        print(f"{target}: {'reclassified ' if revised else ''}{'reassessed' if updated else 'unchanged'}")

@@ -35,7 +35,7 @@ PATTERNS = {
     "AUTH": r"\b401\b|\b403\b|unauthorized|forbidden|token|인증|권한",
     "DATABASE": r"db(?=\b|[가-힣])|database|postgres|mysql|jdbc|connection pool|connection refused|transaction|rollback|커넥션|데이터베이스|트랜잭션|데이터 없음|저장 실패",
     "KUBERNETES": r"kubernetes|kubectl|\bpod\b|crashloopbackoff|imagepullbackoff|파드",
-    "LLM": r"\bllm\b|qwen|inference|gpu|모델 추론",
+    "LLM": r"\bllm\b|qwen|inference|gpu|모델 추론|모델.{0,12}(?:응답|속도|지연)|답변.{0,12}(?:속도|늦|느리)|포맷 드리프트|반복 출력",
     "RAG": r"\brag\b|vector|retrieval|embedding|인덱스|검색 결과",
     "STORAGE": r"nas(?=\b|[가-힣])|s3|storage|file system|파일 저장|스토리지",
     "GATEWAY": r"gateway|upstream|\b502\b|\b504\b|게이트웨이",
@@ -158,6 +158,8 @@ def jev_judgment(parsed: dict[str, Any], fallback: dict[str, Any]) -> dict[str, 
         primary = primary_answer["choice"]
         if primary not in CATEGORIES or float(primary_answer.get("confidence", 0)) < 0.35:
             return fallback
+        if primary == "UNKNOWN" and fallback["primary"] == "LLM":
+            return {**fallback, "source": "rules_override"}
         secondary = answers["secondary"]["choice"]
         depth = answers["depth"]["choice"]
         secondary = secondary if secondary in CATEGORIES and secondary != primary and secondary != "UNKNOWN" else fallback.get("secondary") if primary == fallback["primary"] else None
