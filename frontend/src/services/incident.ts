@@ -1,7 +1,8 @@
 import { api } from './api'
 import type { Classification, IncidentRecord, IncidentState, TimelineEvent } from '../types/incident'
 
-export const diagnose = (message: string) => api<{ incident_id: string; classification: Classification }>('/diagnose', { method: 'POST', body: JSON.stringify({ message, attachments: [] }) })
+export const diagnose = (incidentId: string, message: string) => api<{ incident_id: string; classification: Classification }>('/diagnose', { method: 'POST', body: JSON.stringify({ incident_id: incidentId, message, attachments: [] }) })
+export const createIncidentCard = (title: string) => api<IncidentRecord>('/incidents/cards', { method: 'POST', body: JSON.stringify({ title }) })
 export const listIncidents = (status?: string) => api<IncidentRecord[]>(`/incidents${status ? `?status=${status}` : ''}`)
 export const getIncident = (id: string) => api<IncidentRecord>(`/incidents/${encodeURIComponent(id)}`)
 export const getState = (id: string) => api<IncidentState>(`/incidents/${encodeURIComponent(id)}/state`)

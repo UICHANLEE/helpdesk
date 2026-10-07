@@ -74,8 +74,11 @@ def init_db() -> None:
         has_live = False
         for row in db.execute("SELECT id, message, state, created_at, updated_at FROM incidents").fetchall():
             state = IncidentState.model_validate_json(row["state"])
-            _index_incident(db, row["id"], row["message"], state, row["updated_at"])
-            has_live |= state.origin != "example"
+            if row["message"].strip():
+                _index_incident(db, row["id"], row["message"], state, row["updated_at"])
+            else:
+                db.execute("DELETE FROM knowledge WHERE incident_id=?", (row["id"],))
+            has_live |= state.origin != "example" and bool(row["message"].strip())
         if has_live and not db.execute("SELECT 1 FROM sheet_outbox WHERE id=1").fetchone():
             _queue_sheet(db, datetime.now(timezone.utc).isoformat())
 
@@ -114,11 +117,33 @@ def create_incident(message: str, state: IncidentState) -> str:
         number = db.execute("SELECT COALESCE(MAX(CAST(SUBSTR(id, 5) AS INTEGER)), 1000) + 1 FROM incidents").fetchone()[0]
         incident_id = f"INC-{number}"
         state.id = incident_id
+        if message.strip() and state.questionSubmittedAt is None:
+            state.questionSubmittedAt = now
         db.execute("INSERT INTO incidents VALUES (?, ?, ?, ?, ?)", (incident_id, message, state.model_dump_json(), now, now))
-        _index_incident(db, incident_id, message, state, now)
-        if state.origin != "example":
+        if message.strip():
+            _index_incident(db, incident_id, message, state, now)
+        if state.origin != "example" and message.strip():
             _queue_sheet(db, now)
     return incident_id
+
+
+def submit_question(incident_id: str, message: str, state: IncidentState) -> None:
+    """Claim a Todo card exactly once and attach its first diagnostic question."""
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock, _connection() as db:
+        row = db.execute("SELECT message, state FROM incidents WHERE id=?", (incident_id,)).fetchone()
+        if not row:
+            raise ValueError("Incident card not found")
+        previous = IncidentState.model_validate_json(row["state"])
+        if row["message"].strip() or previous.origin != "live" or previous.status.value != "new":
+            raise ValueError("This card already has a submitted question")
+        state.id = incident_id
+        state.title = previous.title
+        state.questionSubmittedAt = now
+        db.execute("UPDATE incidents SET message=?, state=?, updated_at=? WHERE id=?",
+                   (message, state.model_dump_json(), now, incident_id))
+        _index_incident(db, incident_id, message, state, now)
+        _queue_sheet(db, now)
 
 
 def save_state(state: IncidentState) -> None:
@@ -128,8 +153,9 @@ def save_state(state: IncidentState) -> None:
         if row:
             previous = IncidentState.model_validate_json(row["state"])
             db.execute("UPDATE incidents SET state=?, updated_at=? WHERE id=?", (state.model_dump_json(), now, state.id))
-            _index_incident(db, state.id, row["message"], state, now)
-            if state.origin != "example" and _sheet_projection(previous) != _sheet_projection(state):
+            if row["message"].strip():
+                _index_incident(db, state.id, row["message"], state, now)
+            if state.origin != "example" and row["message"].strip() and _sheet_projection(previous) != _sheet_projection(state):
                 _queue_sheet(db, now)
 
 

@@ -55,7 +55,10 @@ async def stream(incident_id: str, after_id: int = 0) -> AsyncIterator[dict[str,
             yield None
 
 
-async def start(message: str) -> tuple[str, Classification]:
+async def start(message: str, incident_id: str) -> tuple[str, Classification]:
+    card = storage.get_incident(incident_id)
+    if not card or card["message"].strip() or card["state"].get("origin", "live") != "live" or card["state"].get("status") != "new":
+        raise ValueError("Select an unused Todo card before diagnosing")
     classify_started_at = datetime.now(timezone.utc).isoformat()
     classify_started = time.perf_counter()
     parsed, judgment = await classify(message)
@@ -64,16 +67,15 @@ async def start(message: str) -> tuple[str, Classification]:
     classification = classification_from(judgment)
     quick = quick_response(parsed, judgment)
     state = IncidentState(
-        id="", status=IncidentStatus.investigating, workflowStage=WorkflowStage.todo, severity=classification.severity,
+        id=incident_id, status=IncidentStatus.investigating, workflowStage=WorkflowStage.in_progress, severity=classification.severity,
         symptoms=parsed["signals"] or [message[:240]],
         unknowns=["실제 시스템 상태", "근본 원인"], classification=classification,
         diagnosis=quick["diagnosis"], immediateActions=quick["immediate_actions"],
         recommendedAction=quick["recommended_action"], currentStep="route",
         providerStatus={"jev": judgment["source"], "raft": "pending", "qwen": "pending" if qwen_ready else "skipped" if judgment["depth"] == "SIMPLE" else "unavailable"},
     )
-    incident_id = storage.create_incident(message, state)
     state.traceId = f"TR-{incident_id}"
-    storage.save_state(state)
+    storage.submit_question(incident_id, message, state)
     await publish(incident_id, "user", {"message": message, "trace_id": state.traceId})
     await publish(incident_id, "jev", {"classification": classification.model_dump(), "parsed": {k: v for k, v in parsed.items() if k != "text"},
         "trace": {**span(incident_id, "route", classification.source), "started_at": classify_started_at,

@@ -21,14 +21,18 @@ def _day(timestamp: str) -> str:
     return datetime.fromisoformat(timestamp).astimezone(KST).date().isoformat()
 
 
+def _question_time(item: dict) -> str:
+    return item["state"].get("questionSubmittedAt") or item["created_at"]
+
+
 def report(day: str, incidents: list[dict] | None = None) -> dict:
     date.fromisoformat(day)
     incidents = [item for item in (incidents if incidents is not None else storage.list_all_incidents())
-                 if item["state"].get("origin") != "example" and _day(item["created_at"]) == day]
+                 if item["state"].get("origin") != "example" and item["message"].strip() and _day(_question_time(item)) == day]
     records = []
     for item in incidents:
         state = item["state"]
-        records.append({"time": datetime.fromisoformat(item["created_at"]).astimezone(KST).strftime("%H:%M:%S"),
+        records.append({"time": datetime.fromisoformat(_question_time(item)).astimezone(KST).strftime("%H:%M:%S"),
                         "incident_id": item["id"], "question": item["message"],
                         "situation": "; ".join(state.get("symptoms", [])),
                         "domain": (state.get("classification") or {}).get("domain", "UNKNOWN"),
@@ -51,13 +55,13 @@ def report(day: str, incidents: list[dict] | None = None) -> dict:
 
 
 def available_days() -> list[str]:
-    return sorted({_day(item["created_at"]) for item in storage.list_all_incidents()
-                   if item["state"].get("origin") != "example"}, reverse=True)
+    return sorted({_day(_question_time(item)) for item in storage.list_all_incidents()
+                   if item["state"].get("origin") != "example" and item["message"].strip()}, reverse=True)
 
 
 def summaries() -> list[dict]:
     incidents = storage.list_all_incidents()
-    days = sorted({_day(item["created_at"]) for item in incidents if item["state"].get("origin") != "example"}, reverse=True)
+    days = sorted({_day(_question_time(item)) for item in incidents if item["state"].get("origin") != "example" and item["message"].strip()}, reverse=True)
     return [{key: value for key, value in report(day, incidents).items() if key != "records"} for day in days]
 
 
@@ -112,8 +116,8 @@ def export(day: str, incidents: list[dict] | None = None) -> Path:
 
 def refresh_all(since: datetime | None = None) -> None:
     incidents = storage.list_all_incidents()
-    days = {_day(item["created_at"]) for item in incidents
-            if item["state"].get("origin") != "example" and
+    days = {_day(_question_time(item)) for item in incidents
+            if item["state"].get("origin") != "example" and item["message"].strip() and
             (since is None or datetime.fromisoformat(item["updated_at"]) >= since)}
     for day in sorted(days):
         export(day, incidents)

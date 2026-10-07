@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SeverityBadge from '../components/incident/SeverityBadge.vue'
-import { listIncidents, updateWorkflowStage } from '../services/incident'
+import { createIncidentCard, listIncidents, updateWorkflowStage } from '../services/incident'
 import type { IncidentRecord, WorkflowStage } from '../types/incident'
 
 const route = useRoute()
@@ -19,6 +19,9 @@ const busyId = ref('')
 const draggedId = ref('')
 const dragOver = ref<WorkflowStage | ''>('')
 const error = ref('')
+const showCreate = ref(false)
+const cardTitle = ref('')
+const creating = ref(false)
 let timer: ReturnType<typeof setInterval> | null = null
 
 function stageOf(item: IncidentRecord): WorkflowStage {
@@ -31,7 +34,7 @@ function stageOf(item: IncidentRecord): WorkflowStage {
 
 const visible = computed(() => {
   const query = String(route.query.q || '').trim().toLowerCase()
-  return query ? items.value.filter(item => `${item.id} ${item.message} ${item.state.diagnosis}`.toLowerCase().includes(query)) : items.value
+  return query ? items.value.filter(item => `${item.id} ${item.state.title} ${item.message} ${item.state.diagnosis}`.toLowerCase().includes(query)) : items.value
 })
 function cards(stage: WorkflowStage) { return visible.value.filter(item => stageOf(item) === stage) }
 
@@ -42,6 +45,19 @@ async function refresh() {
 }
 onMounted(() => { refresh(); timer = setInterval(refresh, 10000) })
 onUnmounted(() => { if (timer) clearInterval(timer) })
+
+async function createCard() {
+  if (!cardTitle.value.trim()) return
+  creating.value = true
+  error.value = ''
+  try {
+    const card = await createIncidentCard(cardTitle.value.trim())
+    items.value.unshift(card)
+    cardTitle.value = ''
+    showCreate.value = false
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : '카드를 발행하지 못했습니다.' }
+  finally { creating.value = false }
+}
 
 async function move(item: IncidentRecord, stage: WorkflowStage) {
   if (stage === stageOf(item) || busyId.value) return
@@ -76,9 +92,10 @@ async function onDrop(event: DragEvent, stage: WorkflowStage) {
   <div class="board-page">
     <div class="page-eyebrow">OPERATIONS <span>·</span> INCIDENT BOARD</div>
     <div class="page-heading board-heading">
-      <div><h1>Incident Board<span class="title-dot">.</span></h1><p>질문 하나가 카드 하나입니다. 조사를 진행하고, 결과를 검토한 뒤 해결 기록으로 완료하세요.</p></div>
-      <RouterLink to="/diagnose" class="primary-button">＋ New diagnosis</RouterLink>
+      <div><h1>Incident Board<span class="title-dot">.</span></h1><p>카드를 발행한 뒤 Diagnose에서 질문을 제출하세요. 진단 결과를 검토하고 해결 기록으로 완료합니다.</p></div>
+      <button type="button" class="primary-button" @click="showCreate = !showCreate">＋ New card</button>
     </div>
+    <form v-if="showCreate" class="card-create-form surface-card" @submit.prevent="createCard"><label>카드 제목<input v-model="cardTitle" maxlength="180" required autofocus placeholder="예: 점심 이후 모델 응답 지연" /></label><button class="primary-button" :disabled="creating || !cardTitle.trim()">{{ creating ? '발행 중…' : 'Todo에 발행' }}</button></form>
     <div class="tab-links"><RouterLink to="/incidents">Board</RouterLink><RouterLink to="/incidents/list">Live list</RouterLink><RouterLink to="/incidents/active">Active</RouterLink><RouterLink to="/incidents/resolved">Resolved</RouterLink><RouterLink to="/incidents/examples">Examples</RouterLink></div>
     <p v-if="route.query.q" class="search-caption">“{{ route.query.q }}” 검색 결과 {{ visible.length }}건</p>
     <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
@@ -88,17 +105,19 @@ async function onDrop(event: DragEvent, stage: WorkflowStage) {
         <header class="kanban-column-head"><div><h2>{{ column.label }} <span>{{ cards(column.key).length }}</span></h2><p>{{ column.description }}</p></div><i :class="column.key" /></header>
         <div class="kanban-cards">
           <article v-for="item in cards(column.key)" :key="item.id" class="kanban-card" :class="{ dragging: draggedId === item.id }"
-            :draggable="column.key !== 'done' && item.state.status !== 'investigating'" @dragstart="onDragStart($event, item)" @dragend="draggedId = ''; dragOver = ''">
+            :draggable="column.key !== 'done' && !!item.message && item.state.status !== 'investigating'" @dragstart="onDragStart($event, item)" @dragend="draggedId = ''; dragOver = ''">
             <RouterLink :to="`/incidents/${item.id}`" class="kanban-card-link">
               <div class="kanban-card-meta"><strong>{{ item.id }}</strong><SeverityBadge :severity="item.state.severity" /></div>
-              <h3>{{ item.message }}</h3>
+              <h3>{{ item.state.title || item.message }}</h3>
+              <p v-if="!item.message" class="kanban-diagnosis">질문 입력 전 · Diagnose에서 이 카드를 선택하세요.</p>
               <p v-if="item.state.diagnosis" class="kanban-diagnosis">{{ item.state.diagnosis }}</p>
-              <div class="kanban-card-foot"><span>{{ item.state.classification?.domain || 'UNKNOWN' }}</span><span>{{ new Date(item.updated_at).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' }) }}</span></div>
+              <div class="kanban-card-foot"><span>{{ item.state.classification?.domain || '미분류' }}</span><span>{{ new Date(item.updated_at).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' }) }}</span></div>
             </RouterLink>
             <div v-if="column.key !== 'done'" class="kanban-card-actions">
+              <RouterLink v-if="column.key === 'todo' && !item.message" :to="{ path: '/diagnose', query: { card: item.id } }">질문 입력 →</RouterLink>
               <button v-if="column.key === 'in_progress'" type="button" :disabled="busyId === item.id || item.state.status === 'investigating'" @click="move(item, 'todo')">← Todo</button>
               <button v-if="column.key === 'review'" type="button" :disabled="busyId === item.id" @click="move(item, 'in_progress')">← In Progress</button>
-              <button v-if="column.key === 'todo'" type="button" :disabled="busyId === item.id || item.state.status === 'investigating'" @click="move(item, 'in_progress')">In Progress →</button>
+              <button v-if="column.key === 'todo' && item.message" type="button" :disabled="busyId === item.id || item.state.status === 'investigating'" @click="move(item, 'in_progress')">In Progress →</button>
               <button v-if="column.key === 'in_progress'" type="button" :disabled="busyId === item.id || item.state.status === 'investigating'" @click="move(item, 'review')">Review →</button>
               <button v-if="column.key === 'review'" type="button" :disabled="busyId === item.id" @click="move(item, 'done')">해결 기록 →</button>
             </div>
@@ -107,6 +126,6 @@ async function onDrop(event: DragEvent, stage: WorkflowStage) {
         </div>
       </section>
     </div>
-    <p class="board-note">카드를 드래그하거나 버튼으로 옮길 수 있습니다. Done에는 원인과 실제 성공한 조치를 기록한 Incident만 들어갑니다.</p>
+    <p class="board-note">새 카드는 Todo에 발행됩니다. Diagnose에서 질문을 제출하면 In Progress, 분석이 끝나면 Review로 이동합니다. Done에는 검증된 해결 기록이 필요합니다.</p>
   </div>
 </template>

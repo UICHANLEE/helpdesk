@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import time
 
 from backend.storage import sqlite as storage
-from backend.models import AgentAction, ClaimReference, ExampleReviewRequest, IncidentState, IncidentStatus, StatusUpdateRequest, TraceClaim, WorkflowStage, WorkflowUpdateRequest
+from backend.models import AgentAction, CardCreateRequest, ClaimReference, ExampleReviewRequest, IncidentState, IncidentStatus, StatusUpdateRequest, TraceClaim, WorkflowStage, WorkflowUpdateRequest
 from backend.agent.orchestrator import publish, rehearse_example, span
 from backend.observability.trace import graph
 
@@ -20,6 +20,17 @@ def require_incident(incident_id: str) -> dict:
 @router.get("/incidents")
 def list_incidents(status: str | None = Query(default=None)) -> list[dict]:
     return storage.list_incidents(status)
+
+
+@router.post("/incidents/cards", status_code=201)
+async def create_card(request: CardCreateRequest) -> dict:
+    title = request.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="카드 제목을 입력하세요.")
+    state = IncidentState(id="", title=title, status=IncidentStatus.new, workflowStage=WorkflowStage.todo)
+    incident_id = storage.create_incident("", state)
+    await publish(incident_id, "card_created", {"title": title})
+    return require_incident(incident_id)
 
 
 @router.get("/incidents/{incident_id}")
@@ -58,6 +69,8 @@ async def update_status(incident_id: str, request: StatusUpdateRequest) -> dict:
     state = IncidentState.model_validate(incident["state"])
     if state.origin == "example":
         raise HTTPException(status_code=409, detail="예시 질문은 연습 검토 기능에서 수정하세요.")
+    if not incident["message"].strip():
+        raise HTTPException(status_code=409, detail="Diagnose에서 질문을 입력한 뒤 해결 기록을 작성하세요.")
     if request.status.value == "resolved":
         if not request.root_cause or not request.root_cause.strip() or not request.successful_action or not request.successful_action.strip():
             raise HTTPException(status_code=422, detail="확인된 원인과 실제 성공한 조치를 입력하세요.")
@@ -88,6 +101,8 @@ async def update_workflow(incident_id: str, request: WorkflowUpdateRequest) -> d
     state = IncidentState.model_validate(incident["state"])
     if state.origin == "example":
         raise HTTPException(status_code=409, detail="연습 사례는 업무 보드에 포함되지 않습니다.")
+    if not incident["message"].strip():
+        raise HTTPException(status_code=409, detail="Diagnose에서 질문을 입력한 뒤 업무 단계를 이동할 수 있습니다.")
     if state.status == IncidentStatus.resolved:
         raise HTTPException(status_code=409, detail="해결된 Incident는 완료 상태로 유지됩니다.")
     if state.status == IncidentStatus.investigating:

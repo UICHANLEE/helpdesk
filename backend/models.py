@@ -77,6 +77,8 @@ class TraceClaim(BaseModel):
 
 class IncidentState(BaseModel):
     id: str
+    title: str = ""
+    questionSubmittedAt: str | None = None
     origin: str = "live"  # live | example
     seedKey: str | None = None
     examplePhase: str | None = None  # seeded | investigating | awaiting_review | reviewed
@@ -106,8 +108,13 @@ class IncidentState(BaseModel):
 
 
 class DiagnoseRequest(BaseModel):
+    incident_id: str = Field(min_length=1, pattern=r"^INC-\d+$")
     message: str = Field(min_length=1, max_length=12000)
     attachments: list[str] = Field(default_factory=list)
+
+
+class CardCreateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=180)
 
 
 class DiagnoseResponse(BaseModel):
