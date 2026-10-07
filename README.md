@@ -25,7 +25,7 @@ npm run dev
 ## 기록과 백업
 
 - 모든 새 질문과 Incident 이벤트는 `backend/data/raft.sqlite3`에 저장됩니다. 기존 로컬 데이터는 그대로 유지됩니다.
-- 학습용 가상 Incident 100건은 `/incidents/examples`에서 별도로 봅니다. 이 사례는 실제 처리 실적이 아니므로 Dashboard·Daily Reports·Excel·Google Sheet·FAQ 빈도와 게시 후보에 포함되지 않습니다.
+- 연습용 질문 100건은 `/incidents/examples`에서 별도로 봅니다. 이 사례는 실제 처리 실적이 아니므로 Dashboard·Daily Reports·Excel·Google Sheet·FAQ 빈도와 게시 후보에 포함되지 않습니다.
 - 새 질문도 유사 질문 검색을 위해 색인합니다. 사람이 근본 원인과 실제 성공한 조치를 확인한 Incident와 게시된 FAQ만 **확인된 해결 근거**로 사용합니다. 질문 기록의 누적과 모델 가중치 재학습은 별개입니다.
 - 질문·상황·진단·조치·확인된 해결 결과를 한국 시간 기준 날짜별로 집계합니다. `backend/reports/data/YYYY-MM-DD.xlsx`에 업무 요약과 질문 로그 시트를 만듭니다. 화면의 **Daily Reports**에서 날짜별 확인과 다운로드가 가능합니다.
 - 서버가 실행 중일 때 60초마다 SQLite의 일관된 복사본을 `backend/backups/raft-YYYY-MM-DD.sqlite3`에 갱신합니다. 이전 날짜의 백업은 보존합니다. **Daily Reports → 지금 백업**으로 즉시 복사할 수도 있습니다.
@@ -49,14 +49,15 @@ npm run dev
 - SQLite의 `incidents`에 원본 질문과 상태, `events`에 조사 흐름, `knowledge`에 질문·상황·진단·조치의 검색용 복사본, `faq`에 게시된 답변을 저장합니다.
 - 로컬 Ollama의 `qwen3-embedding:0.6b`가 질문·상황·확인된 해결 내용과 FAQ를 벡터로 만들고 SQLite `knowledge_vectors`에 float32로 저장합니다. 내용이 바뀌면 해당 벡터만 갱신합니다. 모든 질문을 누적하며, 미해결 질문은 추정 진단·제안 조치를 제외하고 색인합니다.
 - 검색은 코사인 유사도와 한국어 두 글자 단위를 포함한 BM25를 결합합니다. 장애 진단에서는 현재 질문을 제외한 Top-3을 Qwen 문맥에 넣습니다. 미해결 질문은 **미검증 유사 질문**으로 명시하며 원인·해결 근거로 취급하지 않습니다. Ollama가 꺼져 있으면 BM25 검색으로 작동합니다.
-- 예시 시나리오는 질문·가정한 상황·원인·조치를 검색하지만 `example` 출처로 표시하고, 같은 점수의 실제 확인 사례보다 낮게 순위를 매깁니다. Qwen에도 예시를 실제 검증 근거로 취급하지 않도록 전달합니다.
+- 아직 진단·검토하지 않은 연습 질문의 참고 답안은 RAG 검색에서 제외합니다. 진단 후 수정된 연습 답안은 `example` 출처로 표시하고, 같은 점수의 실제 확인 사례보다 낮게 순위를 매깁니다. Qwen에도 예시를 실제 검증 근거로 취급하지 않도록 전달합니다.
 - 벡터는 로컬 SQLite에 영속 저장되며 전용 ANN 엔진은 사용하지 않습니다. 현재 규모에서는 전체 벡터를 비교합니다. 질문 수가 크게 늘어나면 FAISS나 sqlite-vec 같은 인덱스를 추가할 수 있습니다. 이 구조는 검색 시 문맥을 보강하며 Qwen 모델 자체를 재학습하지는 않습니다.
 
 ### 학습용 사례 100건
 
 - `backend/knowledge/example_cases.tsv`에 대화 기반 50건과 일반 운영 사례 50건을 정리했습니다. 대화 기반 사례는 현재 HelpDesk 대화, 접근 가능한 다른 작업의 대화·요약, Obsidian의 ChatGPT 대화 정리 노트에서 확인된 **주제**를 바탕으로 구성했습니다. 모든 과거 ChatGPT 대화의 원문을 읽을 수 있었던 것은 아닙니다.
-- 각 사례는 질문 → 별도 Incident 생성 → 가상의 원인과 조치 기록 순서로 로컬 SQLite에 넣었습니다. Jev·Qwen·Tool을 실행했다고 기록하지 않습니다. 해결 기록은 가정한 시나리오이며 실제 장애를 확인했다는 뜻이 아닙니다.
-- 재입력이 필요하면 `.venv/bin/python -m backend.knowledge.seed_examples`를 실행합니다. `seedKey`로 중복 생성을 막고, 처음 입력할 때 `backend/backups/pre-example-seed-*.sqlite3`에 기존 DB 복사본을 남깁니다. 로컬 DB 파일은 Git에 포함되지 않으며 사례 정의와 입력 스크립트만 포함됩니다.
+- 질문은 먼저 답을 숨긴 상태로 등록합니다. `/incidents/examples`에서 각 Incident의 **질문 진단 실행**을 누르면 Jev → RAFT → 연결된 점검 도구 → 로컬 Qwen 진단을 실제로 수행하고 이벤트와 첫 판단을 저장합니다. 완료 후 **판단 수정**에서 참고 답안과 비교해 원인·조치를 고치면 그때 연습 지식으로 검색됩니다. 참고 답안은 가상 시나리오이며 실제 장애를 확인했다는 뜻이 아닙니다.
+- 100건을 순서대로 연습하려면 `.venv/bin/python -m backend.knowledge.rehearse_examples --limit 100`을 실행합니다. Qwen이 성공하지 않은 사례는 자동 수정하지 않고 검토 대기 상태로 남깁니다. 이미 완료한 사례는 건너뛰므로 중단 후 재실행할 수 있습니다.
+- 재입력이 필요하면 `.venv/bin/python -m backend.knowledge.seed_examples`를 실행합니다. `seedKey`로 중복 생성을 막고, 처음 입력할 때 `backend/backups/pre-example-seed-*.sqlite3`에 기존 DB 복사본을 남깁니다. 로컬 DB 파일은 Git에 포함되지 않습니다.
 
 ## 진단 연결
 
@@ -77,7 +78,7 @@ npm run dev
 
 - `/diagnose`: 질문 입력과 진단
 - `/incidents`: 실제 Incident 목록, 조사 과정, 확인된 해결 내용
-- `/incidents/examples`: 가상 질문과 원인·조치 예시 100건
+- `/incidents/examples`: 연습 질문 100건과 진단·수정 진행 상태
 - `/knowledge/raft`: 로컬 벡터와 키워드로 질문·해결 사례·FAQ 검색
 - `/faq`: 반복 오류와 FAQ 작성
 - `/reports`: 일별 요약, 엑셀, 로컬 백업

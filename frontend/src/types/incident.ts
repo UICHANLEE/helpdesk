@@ -35,6 +35,10 @@ export interface IncidentState {
   id: string
   origin: 'live' | 'example'
   seedKey: string | null
+  examplePhase: 'seeded' | 'investigating' | 'awaiting_review' | 'reviewed' | null
+  exampleReference: { situation: string; rootCause: string; successfulAction: string } | null
+  firstDiagnosis: string | null
+  firstActions: string[]
   status: IncidentStatus
   severity: Severity
   symptoms: string[]
@@ -58,5 +62,5 @@ export interface IncidentState {
 
 export interface IncidentRecord { id: string; message: string; state: IncidentState; created_at: string; updated_at: string }
 
-export type TimelineType = 'user' | 'agent' | 'jev' | 'retrieval' | 'tool_started' | 'tool_result' | 'evidence' | 'reasoning_started' | 'reasoning' | 'action' | 'verified' | 'status_changed' | 'error'
+export type TimelineType = 'user' | 'agent' | 'jev' | 'retrieval' | 'tool_started' | 'tool_result' | 'evidence' | 'reasoning_started' | 'reasoning' | 'action' | 'verified' | 'status_changed' | 'error' | 'example_seeded' | 'rehearsal_started' | 'rehearsal_interrupted' | 'example_reviewed'
 export interface TimelineEvent { id: number; incident_id: string; type: TimelineType; data: Record<string, unknown>; created_at: string }

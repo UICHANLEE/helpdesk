@@ -73,7 +73,7 @@ def init_db() -> None:
 def _index_incident(db: sqlite3.Connection, incident_id: str, message: str, state: IncidentState, now: str) -> None:
     domain = state.classification.domain if state.classification else "UNKNOWN"
     verified = state.status.value == "resolved" and bool(state.resolution)
-    knowledge_status = "example" if state.origin == "example" else "resolved" if verified else "unverified" if state.status.value == "resolved" else state.status.value
+    knowledge_status = ("example" if state.examplePhase == "reviewed" else "example_pending") if state.origin == "example" else "resolved" if verified else "unverified" if state.status.value == "resolved" else state.status.value
     diagnosis = state.resolution["rootCause"] if verified else state.diagnosis
     actions = [state.resolution["successfulAction"]] if verified else state.immediateActions
     db.execute("""INSERT INTO knowledge VALUES (?, ?, ?, ?, ?, ?, ?, ?)

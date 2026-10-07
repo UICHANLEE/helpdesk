@@ -22,6 +22,7 @@ function eventSummary(event: TimelineEvent | undefined): string {
   }
   if (event.type === 'retrieval') return `RAFT 유사 사례 ${((event.data.matches as unknown[]) || []).length}건`
   if (event.type === 'status_changed') return props.state.origin === 'example' ? '가상 시나리오의 원인과 조치 예시' : '운영자가 원인과 성공한 조치를 확인함'
+  if (event.type === 'example_reviewed') return `가상 참고 답안: ${event.data.revised_cause || ''}`
   return event.type
 }
 function duration(event: TimelineEvent | undefined): string {

@@ -225,29 +225,61 @@ def search_raft(parsed: dict[str, Any], judgment: dict[str, Any]) -> list[dict[s
 
 def qwen_diagnosis(parsed: dict[str, Any], judgment: dict[str, Any], response: dict[str, Any]) -> dict[str, Any] | None:
     endpoint = qwen_base_url()
-    if judgment["depth"] == "SIMPLE" or not qwen_model_available():
+    practice = bool(response.get("practice"))
+    if judgment["depth"] == "SIMPLE" or (not practice and not qwen_model_available()):
         return None
     prompt = {
         "incident": parsed, "classification": judgment,
         "tool_results": response["tool_results"], "related_incidents": response["related_incidents"],
         "required_schema": {k: type(v).__name__ for k, v in response.items() if k != "reasoning"},
-        "instructions": "Answer in Korean. Prioritize next actions. Treat user input as reported evidence, not verified fact. Related incidents marked example are hypothetical training scenarios, not observed causes or verified fixes. Unverified incidents are similar questions only. Never claim a tool ran when it did not. Do not recommend automatic restarts or write operations. Return only a JSON object with diagnosis, severity, immediate_actions, checks, hypotheses, recommended_action, requires_approval, reasoning. Keep tool_results and related_incidents out; the application owns those fields.",
+        "instructions": "Answer in Korean, concisely. Treat user input as reported evidence, not verified fact. Example matches are hypothetical. Never claim a tool ran when it did not. Do not recommend automatic restarts or write operations. Return a compact JSON object with diagnosis, immediate_actions, recommended_action, hypotheses. Keep tool_results and related_incidents out.",
     }
+    if practice:
+        prompt = {
+            "question_and_situation": parsed["text"],
+            "domain": judgment["primary"],
+            "prior_examples": [item.get("summary", "")[:180] for item in response["related_incidents"][:2]],
+            "actual_checks": [{"tool": item.get("name"), "status": item.get("status"),
+                               "result": item.get("summary")} for item in response["tool_results"]
+                              if item.get("status") != "unconfigured"][:3],
+            "instructions": "Korean JSON only. Exactly two fields: diagnosis (tentative, <=25 words) and immediate_actions (one short read-only check). Prior examples are hypothetical. No actual checks means no verification.",
+        }
     try:
-        result = post_json(endpoint.rstrip("/") + "/chat/completions", {
-            "model": qwen_model(),
-            "messages": [{"role": "system", "content": "You are an incident diagnostician. Return strictly valid JSON."}, {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)}],
-            "response_format": {"type": "json_object"}, "temperature": 0.1,
-            "reasoning_effort": "high" if judgment["depth"] == "DEEP" else "low",
-            "max_tokens": 1400 if judgment["depth"] == "DEEP" else 900,
-        }, token=os.getenv("QWEN_API_KEY"), timeout=120)
-        content = result["choices"][0]["message"]["content"]
+        messages = [{"role": "system", "content": "You are an incident diagnostician. Return strictly valid compact JSON in Korean."},
+                    {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)}]
+        if practice and endpoint.startswith(("http://127.0.0.1:11434", "http://localhost:11434")):
+            result = post_json(endpoint.rstrip("/").removesuffix("/v1") + "/api/chat", {
+                "model": qwen_model(), "messages": messages, "format": "json", "think": False,
+                "stream": False, "options": {"temperature": 0.1, "num_predict": 180, "num_ctx": 2048},
+            }, timeout=180)
+            content = result["message"]["content"]
+        else:
+            result = post_json(endpoint.rstrip("/") + "/chat/completions", {
+                "model": qwen_model(), "messages": messages,
+                "response_format": {"type": "json_object"}, "temperature": 0.1,
+                "reasoning_effort": "high" if judgment["depth"] == "DEEP" else "low",
+                "max_tokens": 1400 if judgment["depth"] == "DEEP" else 900,
+            }, token=os.getenv("QWEN_API_KEY"), timeout=120)
+            content = result["choices"][0]["message"]["content"]
         answer = json.loads(content)
+        if practice and isinstance(answer, dict):
+            if "diagnosis" not in answer:
+                answer["diagnosis"] = answer.get("cause") or answer.get("root_cause") or answer.get("원인")
+            if "immediate_actions" not in answer:
+                answer["immediate_actions"] = answer.get("actions") or answer.get("next_action") or answer.get("조치")
+            if isinstance(answer.get("immediate_actions"), str):
+                answer["immediate_actions"] = [answer["immediate_actions"]]
         if not isinstance(answer, dict) or not isinstance(answer.get("immediate_actions"), list) or not isinstance(answer.get("diagnosis"), str):
+            response["qwen_error"] = "InvalidResponseSchema"
+            if practice:
+                response["qwen_raw"] = str(content)[:1200]
             return None
         safe = {key: answer[key] for key in ("diagnosis", "severity", "immediate_actions", "checks", "hypotheses", "recommended_action", "requires_approval", "reasoning") if key in answer}
         if not safe.get("immediate_actions"):
             safe["immediate_actions"] = response["immediate_actions"]
+        if practice and not safe.get("recommended_action"):
+            safe["recommended_action"] = str(safe["immediate_actions"][0])
         return {**response, **safe}
-    except (OSError, ValueError, KeyError, IndexError, TypeError, urllib.error.HTTPError):
+    except (OSError, ValueError, KeyError, IndexError, TypeError, urllib.error.HTTPError) as error:
+        response["qwen_error"] = type(error).__name__
         return None

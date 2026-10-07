@@ -83,6 +83,55 @@ async def start(message: str) -> tuple[str, Classification]:
     return incident_id, classification
 
 
+async def rehearse_example(incident_id: str) -> tuple[Classification, asyncio.Task]:
+    """Submit an example question through the same Jev → RAFT → tools → Qwen flow as live work."""
+    record = storage.get_incident(incident_id)
+    if not record or record["state"].get("origin") != "example":
+        raise ValueError("Example incident not found")
+    state = IncidentState.model_validate(record["state"])
+    if state.examplePhase not in ("seeded", "awaiting_review"):
+        raise ValueError("Example is already investigating or reviewed")
+    started_at = datetime.now(timezone.utc).isoformat()
+    started = time.perf_counter()
+    situation = (state.exampleReference or {}).get("situation", "")
+    submitted_message = f"{record['message']}\n상황: {situation}" if situation else record["message"]
+    parsed, judgment = await classify(submitted_message)
+    if judgment["depth"] == "SIMPLE":
+        judgment = {**judgment, "depth": "MEDIUM"}  # Practice cases should exercise Qwen as well.
+    duration_ms = round((time.perf_counter() - started) * 1000)
+    ready = True  # A transient /api/tags timeout must not skip the practice model call.
+    classification = classification_from(judgment)
+    quick = quick_response(parsed, judgment)
+    state.status = IncidentStatus.investigating
+    state.examplePhase = "investigating"
+    state.classification = classification
+    state.severity = classification.severity
+    state.symptoms = [state.exampleReference["situation"]] if state.exampleReference else parsed["signals"] or [record["message"][:240]]
+    state.unknowns = ["실제 시스템 상태", "근본 원인"]
+    state.diagnosis = quick["diagnosis"]
+    state.immediateActions = quick["immediate_actions"]
+    state.recommendedAction = quick["recommended_action"]
+    state.currentStep = "route"
+    state.providerStatus = {"jev": judgment["source"], "raft": "pending", "qwen": "pending" if ready else "unavailable"}
+    state.resolution = None
+    state.raftMatches = []
+    state.confirmedFacts = []
+    state.hypotheses = []
+    state.claims = []
+    state.firstDiagnosis = None
+    state.firstActions = []
+    storage.save_state(state)
+    await publish(incident_id, "rehearsal_started", {"message": record["message"], "origin": "example"})
+    await publish(incident_id, "user", {"message": submitted_message, "origin": "example", "trace_id": state.traceId})
+    await publish(incident_id, "jev", {"classification": classification.model_dump(), "parsed": {k: v for k, v in parsed.items() if k != "text"},
+        "trace": {**span(incident_id, "route", classification.source), "started_at": started_at,
+                  "ended_at": datetime.now(timezone.utc).isoformat(), "duration_ms": duration_ms, "status": "ok"}})
+    task = asyncio.create_task(investigate(incident_id, parsed, judgment))
+    _tasks.add(task)
+    task.add_done_callback(_tasks.discard)
+    return classification, task
+
+
 async def investigate(incident_id: str, parsed: dict[str, Any], judgment: dict[str, Any]) -> None:
     record = storage.get_incident(incident_id)
     if not record:
@@ -128,6 +177,8 @@ async def investigate(incident_id: str, parsed: dict[str, Any], judgment: dict[s
         context = quick_response(parsed, judgment)
         context["tool_results"] = results
         context["related_incidents"] = matches
+        if state.origin == "example":
+            context["practice"] = True
         llm_span = span(incident_id, "llm", qwen_model())
         if state.providerStatus.get("qwen") == "pending":
             await publish(incident_id, "reasoning_started", {"model": llm_span["name"], "complexity": judgment["depth"], "trace": llm_span})
@@ -136,8 +187,14 @@ async def investigate(incident_id: str, parsed: dict[str, Any], judgment: dict[s
         llm_duration_ms = round((time.perf_counter() - started) * 1000)
         final = answer or context
         state.providerStatus["qwen"] = "connected" if answer else "skipped" if judgment["depth"] == "SIMPLE" else "unavailable"
+        if not answer and context.get("qwen_error"):
+            state.providerStatus["qwen_error"] = context["qwen_error"]
         state.diagnosis = str(final.get("diagnosis") or context["diagnosis"])
         state.immediateActions = [str(item) for item in final.get("immediate_actions", [])][:6] or context["immediate_actions"]
+        if state.origin == "example":
+            state.firstDiagnosis = state.diagnosis
+            state.firstActions = list(state.immediateActions)
+            state.examplePhase = "awaiting_review"
         state.recommendedAction = str(final.get("recommended_action") or state.immediateActions[0])
         state.hypotheses = [Hypothesis(id=f"H{i+1}", name=str(item.get("name", "확인 필요")), confidence=item.get("confidence") if isinstance(item.get("confidence"), (int, float)) else None, rationale=str(item.get("rationale", ""))) for i, item in enumerate(final.get("hypotheses", [])) if isinstance(item, dict)]
         state.reasoningTrace = [
@@ -150,7 +207,7 @@ async def investigate(incident_id: str, parsed: dict[str, Any], judgment: dict[s
         state.actions = [AgentAction(id=f"{incident_id}-A1", label=state.recommendedAction, requires_approval=bool(final.get("requires_approval", False)))]
         state.status = IncidentStatus.action_required
         state.currentStep = "act"
-        user_event = next((event for event in storage.get_events(incident_id) if event["type"] == "user"), None)
+        user_event = next((event for event in reversed(storage.get_events(incident_id)) if event["type"] == "user"), None)
         references = [ClaimReference(eventId=user_event["id"], relation="reported")] if user_event else []
         if any(match.get("verification") == "verified" for match in matches):
             references.append(ClaimReference(eventId=retrieval_event["id"], relation="historical_match"))

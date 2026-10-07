@@ -24,7 +24,7 @@ def graph(incident: dict[str, Any], events: list[dict[str, Any]]) -> dict[str, A
             span = spans.setdefault(span_id, {"id": span_id, "trace_id": trace_id})
             span.update({key: value for key, value in trace.items() if value is not None})
             span["last_event_id"] = event["id"]
-        if event["type"] not in ("user", "tool_result", "retrieval", "status_changed"):
+        if event["type"] not in ("user", "tool_result", "retrieval", "status_changed", "example_reviewed"):
             continue
         if event["type"] == "status_changed" and data.get("status") != "resolved":
             continue
@@ -39,6 +39,9 @@ def graph(incident: dict[str, Any], events: list[dict[str, Any]]) -> dict[str, A
         elif event["type"] == "retrieval":
             summary = f"과거 사례 {len(data.get('matches') or [])}건 검색"
             status = "historical"
+        elif event["type"] == "example_reviewed":
+            summary = str(data.get("revised_cause") or "예시 답안 수정")
+            status = "example"
         else:
             summary = str((data.get("resolution") or {}).get("rootCause") or "운영자 해결 확인")
             status = "example" if state.get("origin") == "example" else "operator_verified"

@@ -72,6 +72,10 @@ class IncidentState(BaseModel):
     id: str
     origin: str = "live"  # live | example
     seedKey: str | None = None
+    examplePhase: str | None = None  # seeded | investigating | awaiting_review | reviewed
+    exampleReference: dict[str, str] | None = None
+    firstDiagnosis: str | None = None
+    firstActions: list[str] = Field(default_factory=list)
     status: IncidentStatus = IncidentStatus.new
     severity: str = "P3"
     symptoms: list[str] = Field(default_factory=list)
@@ -114,3 +118,10 @@ class StatusUpdateRequest(BaseModel):
     root_cause: str | None = Field(default=None, max_length=1000)
     successful_action: str | None = Field(default=None, max_length=2000)
     note: str | None = Field(default=None, max_length=2000)
+
+
+class ExampleReviewRequest(BaseModel):
+    root_cause: str = Field(min_length=1, max_length=1000)
+    successful_action: str = Field(min_length=1, max_length=2000)
+    note: str = Field(default="", max_length=2000)
+    review_source: str = Field(default="operator", pattern="^(operator|reference_batch)$")

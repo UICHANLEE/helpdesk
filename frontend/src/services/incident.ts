@@ -7,3 +7,5 @@ export const getIncident = (id: string) => api<IncidentRecord>(`/incidents/${enc
 export const getState = (id: string) => api<IncidentState>(`/incidents/${encodeURIComponent(id)}/state`)
 export const getEvents = (id: string) => api<TimelineEvent[]>(`/incidents/${encodeURIComponent(id)}/events`)
 export const updateIncidentStatus = (id: string, status: string, resolution?: { root_cause: string; successful_action: string; note: string }) => api<IncidentState>(`/incidents/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status, ...resolution }) })
+export const rehearseExample = (id: string) => api<{ incident_id: string; status: string }>(`/incidents/${encodeURIComponent(id)}/rehearse`, { method: 'POST' })
+export const reviewExample = (id: string, resolution: { root_cause: string; successful_action: string; note: string }) => api<IncidentState>(`/incidents/${encodeURIComponent(id)}/example-review`, { method: 'POST', body: JSON.stringify(resolution) })

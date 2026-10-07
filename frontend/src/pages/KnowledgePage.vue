@@ -19,10 +19,10 @@ onMounted(load)
     <div v-if="data" class="metric-grid">
       <div class="metric-card"><small>RECORDED QUESTIONS</small><strong>{{ data.stats.questions }}</strong></div>
       <div class="metric-card"><small>RESOLVED KNOWLEDGE</small><strong>{{ data.stats.resolved_knowledge }}</strong></div>
-      <div class="metric-card"><small>EXAMPLE SCENARIOS</small><strong>{{ data.stats.example_count }}</strong></div>
+      <div class="metric-card"><small>PRACTICE REVIEWED / TOTAL</small><strong>{{ data.stats.example_reviewed }} / {{ data.stats.example_count }}</strong></div>
       <div class="metric-card"><small>PUBLISHED FAQ</small><strong>{{ data.stats.faq_count }}</strong></div>
     </div>
-    <p v-if="data" class="soft-text">로컬 RAG: {{ data.stats.vector.model }} 임베딩 {{ data.stats.vector.indexed }}건을 SQLite에 저장하고 BM25와 함께 검색합니다. 예시 시나리오는 실제 검증 사례가 아닙니다. Ollama가 꺼져 있으면 키워드 검색으로 계속 작동합니다.</p>
+    <p v-if="data" class="soft-text">로컬 RAG: {{ data.stats.vector.model }} 임베딩 {{ data.stats.vector.indexed }}건을 SQLite에 저장하고 BM25와 함께 검색합니다. 검토 전 연습 답안은 검색에서 제외하며, 검토된 예시도 실제 검증 사례가 아닙니다. Ollama가 꺼져 있으면 키워드 검색으로 계속 작동합니다.</p>
     <form class="knowledge-search" @submit.prevent="load"><input v-model="query" placeholder="오류, 질문, 상황 검색" aria-label="지식 검색" /><button class="secondary-button">검색</button></form>
     <p v-if="error" class="inline-error">{{ error }}</p>
     <div v-if="data && query" class="knowledge-results">

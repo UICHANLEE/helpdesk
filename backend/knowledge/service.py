@@ -16,7 +16,7 @@ def signature(domain: str, diagnosis: str) -> str:
 
 
 def corpus_documents() -> list[dict[str, Any]]:
-    documents = storage.list_knowledge(limit=10000)
+    documents = [item for item in storage.list_knowledge(limit=10000) if item["status"] != "example_pending"]
     faq = storage.list_faq()
     result = []
     for item in documents:
@@ -56,7 +56,7 @@ def search(query: str, limit: int = 5, exclude_id: str | None = None) -> list[di
         if not lexical and semantic < .45:
             continue
         score = .65 * semantic + .35 * lexical if dense else lexical
-        if item["status"] == "example":
+        if item["status"].startswith("example"):
             score *= .85  # Hypothetical scenarios cannot outrank equally relevant verified resolutions.
         found.append({key: item[key] for key in ("id", "type", "question", "answer", "actions", "status")} |
                      {"score": round(score, 3), "retrieval": "hybrid" if dense else "lexical"})
@@ -89,8 +89,9 @@ def frequent_errors(limit: int = 10) -> list[dict[str, Any]]:
 
 def stats() -> dict[str, Any]:
     documents = storage.list_knowledge(limit=10000)
-    domains = Counter(item["domain"] for item in documents if item["status"] != "example")
-    return {"questions": sum(item["status"] != "example" for item in documents),
+    domains = Counter(item["domain"] for item in documents if not item["status"].startswith("example"))
+    return {"questions": sum(not item["status"].startswith("example") for item in documents),
             "resolved_knowledge": sum(item["status"] == "resolved" for item in documents),
-            "example_count": sum(item["status"] == "example" for item in documents),
+            "example_count": sum(item["status"].startswith("example") for item in documents),
+            "example_reviewed": sum(item["status"] == "example" for item in documents),
             "faq_count": len(storage.list_faq()), "domains": dict(domains), "vector": vector.status()}
