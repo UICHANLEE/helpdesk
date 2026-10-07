@@ -4,6 +4,8 @@ export interface KnowledgeResult { id: string; type: string; question: string; a
 export interface FrequentError { signature: string; domain: string; diagnosis: string; count: number; resolved: number; latest_at: string; example_incident_id: string; suggested_answer: string; faq_published: boolean }
 export interface Faq { id: number; signature: string; question: string; answer: string; updated_at: string }
 export interface KnowledgeData { stats: { questions: number; resolved_knowledge: number; example_count: number; example_reviewed: number; faq_count: number; domains: Record<string, number>; vector: { model: string; indexed: number; storage: string } }; results: KnowledgeResult[]; frequent_errors: FrequentError[]; faq: Faq[] }
+export interface RaftDatasetStatus { schema: string; verified_cases: number; training_examples: number; train_examples: number; validation_examples: number; mode: string; model_fine_tuned: boolean; ready_for_fine_tuning: boolean; requires_operator_review: boolean; policy: string }
+export const getRaftDatasetStatus = () => api<RaftDatasetStatus>('/knowledge/raft/dataset-status')
 export interface DailyReport { date: string; summary: string; questions: number; resolved: number; domains: Record<string, number>; records?: Array<Record<string, string>> }
 export interface StorageStatus { database_path: string; backup_dir: string; backup_count: number; latest_backup: string | null; latest_backup_at: string | null }
 export interface SheetSyncResult { completed_at: string; updated_rows: number; inserted_rows: number; unchanged_rows: number; sheet_url: string }

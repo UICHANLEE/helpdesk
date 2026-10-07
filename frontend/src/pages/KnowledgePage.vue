@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { getKnowledge, type KnowledgeData } from '../services/knowledge'
+import { getKnowledge, getRaftDatasetStatus, type KnowledgeData, type RaftDatasetStatus } from '../services/knowledge'
 
 const query = ref('')
 const data = ref<KnowledgeData | null>(null)
+const raftStatus = ref<RaftDatasetStatus | null>(null)
 const error = ref('')
 async function load() {
   try { data.value = await getKnowledge(query.value); error.value = '' }
   catch { error.value = '지식 데이터를 불러오지 못했습니다.' }
 }
-onMounted(load)
+onMounted(() => { load(); getRaftDatasetStatus().then(value => { raftStatus.value = value }).catch(() => { /* Search remains available. */ }) })
 </script>
 
 <template>
@@ -23,6 +24,10 @@ onMounted(load)
       <div class="metric-card"><small>PUBLISHED FAQ</small><strong>{{ data.stats.faq_count }}</strong></div>
     </div>
     <p v-if="data" class="soft-text">로컬 RAG: {{ data.stats.vector.model }} 임베딩 {{ data.stats.vector.indexed }}건을 SQLite에 저장하고 BM25와 함께 검색합니다. 검토 전 연습 답안은 검색에서 제외하며, 검토된 예시도 실제 검증 사례가 아닙니다. Ollama가 꺼져 있으면 키워드 검색으로 계속 작동합니다.</p>
+    <section v-if="raftStatus" class="raft-dataset-panel surface-card">
+      <div><span class="page-eyebrow">RAFT · TRAINING DATA</span><h2>검증된 해결 기록 {{ raftStatus.verified_cases }}건</h2><p>논문의 정답 문서·방해 문서 구조로 {{ raftStatus.training_examples }}개 학습 후보를 만듭니다. 근거가 없는 예시는 답변을 유보하도록 구성합니다. 가상 연습 사례와 미해결 질문은 정답에서 제외합니다.</p><small>Train {{ raftStatus.train_examples }} · Validation {{ raftStatus.validation_examples }} · {{ raftStatus.ready_for_fine_tuning ? '운영자 검토 후 학습 가능' : '사례 부족: 아직 모델 재학습 권장 안 함' }}</small></div>
+      <a class="secondary-button" href="/api/v1/knowledge/raft/dataset" download="helpdesk-raft-v1.jsonl" :aria-disabled="raftStatus.training_examples === 0" @click="raftStatus.training_examples === 0 && $event.preventDefault()">학습 데이터 내려받기 ↓</a>
+    </section>
     <form class="knowledge-search" @submit.prevent="load"><input v-model="query" placeholder="오류, 질문, 상황 검색" aria-label="지식 검색" /><button class="secondary-button">검색</button></form>
     <p v-if="error" class="inline-error">{{ error }}</p>
     <div v-if="data && query" class="knowledge-results">
