@@ -58,6 +58,8 @@ def search(query: str, limit: int = 5, exclude_id: str | None = None) -> list[di
         score = .65 * semantic + .35 * lexical if dense else lexical
         if item["status"].startswith("example"):
             score *= .85  # Hypothetical scenarios cannot outrank equally relevant verified resolutions.
+        elif item["status"] == "unverified":
+            score *= .7  # A question without a confirmed outcome is weaker evidence.
         found.append({key: item[key] for key in ("id", "type", "question", "answer", "actions", "status")} |
                      {"score": round(score, 3), "retrieval": "hybrid" if dense else "lexical"})
     return sorted(found, key=lambda item: item["score"], reverse=True)[:limit]

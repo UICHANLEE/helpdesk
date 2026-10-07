@@ -11,6 +11,7 @@ from uuid import uuid4
 from incident import get_tool_config, quick_response, qwen_model, qwen_model_available
 
 from backend.agent.jev import classify
+from backend.knowledge.fallback import from_verified_history
 from backend.llm.qwen import diagnose as qwen_diagnose
 from backend.models import AgentAction, ClaimReference, Classification, Evidence, Hypothesis, IncidentState, IncidentStatus, RaftMatch, TraceClaim
 from backend.raft.retriever import retrieve
@@ -185,8 +186,11 @@ async def investigate(incident_id: str, parsed: dict[str, Any], judgment: dict[s
         started = time.perf_counter()
         answer = await qwen_diagnose(parsed, judgment, context)
         llm_duration_ms = round((time.perf_counter() - started) * 1000)
-        final = answer or context
+        history_fallback = from_verified_history(matches) if answer is None else None
+        final = answer or ({**context, **history_fallback} if history_fallback else context)
         state.providerStatus["qwen"] = "connected" if answer else "skipped" if judgment["depth"] == "SIMPLE" else "unavailable"
+        if history_fallback:
+            state.providerStatus["answer_source"] = "verified_history_check"
         if not answer and context.get("qwen_error"):
             state.providerStatus["qwen_error"] = context["qwen_error"]
         state.diagnosis = str(final.get("diagnosis") or context["diagnosis"])
@@ -200,7 +204,8 @@ async def investigate(incident_id: str, parsed: dict[str, Any], judgment: dict[s
         state.reasoningTrace = [
             {"step": "OBSERVATION", "text": "; ".join(state.symptoms)},
             {"step": "INTERPRETATION", "text": state.classification.domain if state.classification else "UNKNOWN"},
-            {"step": "EVIDENCE", "text": "; ".join(item.summary for item in state.confirmedFacts) or "연결된 도구의 확인 결과 없음"},
+            {"step": "EVIDENCE", "text": "; ".join(item.summary for item in state.confirmedFacts) or
+             (f"과거 해결 기록 {history_fallback['historical_case_id']} 참고 (현재 건 검증 전)" if history_fallback else "연결된 도구의 확인 결과 없음")},
             {"step": "HYPOTHESIS", "text": state.diagnosis},
             {"step": "NEXT TEST", "text": state.recommendedAction},
         ]
