@@ -4,6 +4,7 @@ import App from './App.vue'
 import DashboardPage from './pages/DashboardPage.vue'
 import DiagnosePage from './pages/DiagnosePage.vue'
 import IncidentsPage from './pages/IncidentsPage.vue'
+import IncidentBoardPage from './pages/IncidentBoardPage.vue'
 import IncidentDetailPage from './pages/IncidentDetailPage.vue'
 import InfrastructurePage from './pages/InfrastructurePage.vue'
 import SupportPage from './pages/SupportPage.vue'
@@ -19,7 +20,8 @@ const router = createRouter({
     { path: '/login', redirect: '/diagnose' },
     { path: '/dashboard', component: DashboardPage, meta: { title: 'Dashboard' } },
     { path: '/diagnose', component: DiagnosePage, meta: { title: 'Quick Diagnose' } },
-    { path: '/incidents', component: IncidentsPage, meta: { title: 'Incidents' } },
+    { path: '/incidents', component: IncidentBoardPage, meta: { title: 'Incident Board' } },
+    { path: '/incidents/list', component: IncidentsPage, meta: { title: 'Incident List' } },
     { path: '/incidents/active', component: IncidentsPage, props: { status: 'active' }, meta: { title: 'Active Incidents' } },
     { path: '/incidents/resolved', component: IncidentsPage, props: { status: 'resolved' }, meta: { title: 'Resolved Incidents' } },
     { path: '/incidents/examples', component: IncidentsPage, props: { status: 'examples' }, meta: { title: 'Example Incidents' } },

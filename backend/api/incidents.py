@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import time
 
 from backend.storage import sqlite as storage
-from backend.models import AgentAction, ClaimReference, ExampleReviewRequest, IncidentState, IncidentStatus, StatusUpdateRequest, TraceClaim
+from backend.models import AgentAction, ClaimReference, ExampleReviewRequest, IncidentState, IncidentStatus, StatusUpdateRequest, TraceClaim, WorkflowStage, WorkflowUpdateRequest
 from backend.agent.orchestrator import publish, rehearse_example, span
 from backend.observability.trace import graph
 
@@ -65,6 +65,8 @@ async def update_status(incident_id: str, request: StatusUpdateRequest) -> dict:
                             "note": (request.note or "").strip(), "verifiedAt": datetime.now(timezone.utc).isoformat()}
         state.diagnosis = request.root_cause.strip()
     state.status = request.status
+    if request.status == IncidentStatus.resolved:
+        state.workflowStage = WorkflowStage.done
     state.currentStep = "verify" if request.status.value in ("verifying", "resolved") else state.currentStep
     storage.save_state(state)
     event = await publish(incident_id, "status_changed", {"status": request.status.value, "manual": True,
@@ -77,6 +79,26 @@ async def update_status(incident_id: str, request: StatusUpdateRequest) -> dict:
             verification="operator_verified", references=[ClaimReference(eventId=event["id"], relation="operator_verification")],
             createdAt=datetime.now(timezone.utc).isoformat()))
         storage.save_state(state)
+    return state.model_dump()
+
+
+@router.patch("/incidents/{incident_id}/workflow")
+async def update_workflow(incident_id: str, request: WorkflowUpdateRequest) -> dict:
+    incident = require_incident(incident_id)
+    state = IncidentState.model_validate(incident["state"])
+    if state.origin == "example":
+        raise HTTPException(status_code=409, detail="연습 사례는 업무 보드에 포함되지 않습니다.")
+    if state.status == IncidentStatus.resolved:
+        raise HTTPException(status_code=409, detail="해결된 Incident는 완료 상태로 유지됩니다.")
+    if state.status == IncidentStatus.investigating:
+        raise HTTPException(status_code=409, detail="자동 진단이 끝난 뒤 업무 단계를 이동할 수 있습니다.")
+    if request.stage == WorkflowStage.done:
+        raise HTTPException(status_code=422, detail="완료하려면 확인된 원인과 실제 조치를 해결 기록에 입력하세요.")
+    if request.stage == WorkflowStage.review and state.status not in (IncidentStatus.action_required, IncidentStatus.verifying):
+        raise HTTPException(status_code=409, detail="진단이 끝난 뒤 검토 단계로 이동할 수 있습니다.")
+    state.workflowStage = request.stage
+    storage.save_state(state)
+    await publish(incident_id, "workflow_changed", {"stage": request.stage.value, "manual": True})
     return state.model_dump()
 
 

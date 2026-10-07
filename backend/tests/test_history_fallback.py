@@ -9,7 +9,7 @@ from incident import jev_judgment, parse_incident, rule_judgment
 from backend.agent.orchestrator import investigate
 from backend.knowledge.fallback import from_verified_history
 from backend.knowledge.reassess import reassess, reclassify_explicit_llm
-from backend.models import Classification, IncidentState, IncidentStatus, RaftMatch
+from backend.models import Classification, IncidentState, IncidentStatus, RaftMatch, WorkflowStage
 from backend.storage import sqlite as storage
 
 
@@ -27,7 +27,8 @@ class HistoryFallbackTest(unittest.IsolatedAsyncioTestCase):
     async def test_missing_qwen_uses_verified_case_as_unconfirmed_check(self) -> None:
         incident_id = storage.create_incident("점심 이후 답변이 느려요", IncidentState(
             id="", classification=Classification(domain="UNKNOWN"),
-            providerStatus={"qwen": "pending"}, symptoms=["점심 이후 답변 지연"]))
+            providerStatus={"qwen": "pending"}, symptoms=["점심 이후 답변 지연"],
+            workflowStage=WorkflowStage.todo))
         matches = [
             {"id": "INC-1013", "title": "특정 시간대의 요청 집중", "summary": "확인된 해결 사례",
              "score": 0.11, "verification": "verified", "retrieval": "lexical"},
@@ -46,6 +47,7 @@ class HistoryFallbackTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state["providerStatus"]["answer_source"], "verified_history_check")
         self.assertIn("INC-1013", state["recommendedAction"])
         self.assertEqual(state["status"], "action_required")
+        self.assertEqual(state["workflowStage"], "review")
         self.assertIn("현재 건 검증 전", state["reasoningTrace"][2]["text"])
 
     def test_unverified_and_weak_matches_do_not_become_diagnoses(self) -> None:

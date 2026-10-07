@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { TimelineEvent } from '../../types/incident'
 defineProps<{ events: TimelineEvent[] }>()
-const names: Record<string, string> = { user: 'USER', jev: 'JEV', retrieval: 'RAFT', tool_started: 'TOOL', tool_result: 'TOOL RESULT', reasoning_started: 'QWEN', reasoning: 'REASON', action: 'ACTION', status_changed: 'STATUS', error: 'ERROR', example_seeded: 'QUESTION', rehearsal_started: 'PRACTICE', rehearsal_interrupted: 'RETRY', example_reviewed: 'REVISION' }
+const names: Record<string, string> = { user: 'USER', jev: 'JEV', retrieval: 'RAFT', tool_started: 'TOOL', tool_result: 'TOOL RESULT', reasoning_started: 'QWEN', reasoning: 'REASON', action: 'ACTION', status_changed: 'STATUS', workflow_changed: 'BOARD', historical_reassessment: 'HISTORY', classification_revised: 'ROUTE', error: 'ERROR', example_seeded: 'QUESTION', rehearsal_started: 'PRACTICE', rehearsal_interrupted: 'RETRY', example_reviewed: 'REVISION' }
 function summary(event: TimelineEvent): string {
   const data = event.data
   if (event.type === 'user') return String(data.message || '')
@@ -17,6 +17,9 @@ function summary(event: TimelineEvent): string {
   if (event.type === 'reasoning') return '진단 Trace와 원인 후보가 업데이트되었습니다.'
   if (event.type === 'action') return String(data.recommended_action || data.decision || '다음 조치 제안')
   if (event.type === 'status_changed') return data.origin === 'example' ? '이전 방식으로 입력한 가상 답안입니다. 새 연습 진단 기록과 구분하세요.' : data.status === 'resolved' ? '운영자가 Incident를 해결됨으로 표시했습니다.' : `상태 변경: ${data.status}`
+  if (event.type === 'workflow_changed') return `업무 단계 변경: ${data.stage}`
+  if (event.type === 'historical_reassessment') return `확인된 과거 기록 ${data.historical_case_id}를 다음 점검의 근거로 연결했습니다. 현재 원인은 미확인입니다.`
+  if (event.type === 'classification_revised') return `영역 변경: ${data.previous_domain} → ${data.domain}`
   return String(data.message || '')
 }
 </script>

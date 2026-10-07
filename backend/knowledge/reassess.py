@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from incident import PLAYBOOKS, parse_incident, rule_judgment
 
 from backend.knowledge.fallback import from_verified_history
-from backend.models import AgentAction, ClaimReference, Classification, IncidentState, IncidentStatus, TraceClaim
+from backend.models import AgentAction, ClaimReference, Classification, Hypothesis, IncidentState, IncidentStatus, TraceClaim
 from backend.storage import sqlite as storage
 
 
@@ -17,6 +17,14 @@ def reassess(incident_id: str) -> bool:
     if not record:
         return False
     state = IncidentState.model_validate(record["state"])
+    if state.providerStatus.get("answer_source") == "verified_history_check":
+        fallback = from_verified_history([match.model_dump() for match in state.raftMatches])
+        if fallback and fallback["historical_case_id"] in state.diagnosis and (
+                not state.hypotheses or state.hypotheses[0].name != fallback["hypotheses"][0]["name"]):
+            state.hypotheses = [Hypothesis(id="H1", **fallback["hypotheses"][0])]
+            storage.save_state(state)
+            return True
+        return False
     if (state.origin != "live" or state.status != IncidentStatus.action_required or state.resolution or
             state.diagnosis != PLAYBOOKS["UNKNOWN"][0] or state.providerStatus.get("qwen") == "connected"):
         return False
@@ -27,6 +35,7 @@ def reassess(incident_id: str) -> bool:
     state.diagnosis = fallback["diagnosis"]
     state.immediateActions = fallback["immediate_actions"]
     state.recommendedAction = fallback["recommended_action"]
+    state.hypotheses = [Hypothesis(id="H1", **fallback["hypotheses"][0])]
     state.actions = [AgentAction(id=f"{incident_id}-A1", label=state.recommendedAction)]
     state.providerStatus["answer_source"] = "verified_history_check"
     state.reasoningTrace = [

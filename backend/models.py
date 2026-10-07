@@ -14,6 +14,13 @@ class IncidentStatus(str, Enum):
     resolved = "resolved"
 
 
+class WorkflowStage(str, Enum):
+    todo = "todo"
+    in_progress = "in_progress"
+    review = "review"
+    done = "done"
+
+
 class Classification(BaseModel):
     domain: str
     secondary: str | None = None
@@ -77,6 +84,7 @@ class IncidentState(BaseModel):
     firstDiagnosis: str | None = None
     firstActions: list[str] = Field(default_factory=list)
     status: IncidentStatus = IncidentStatus.new
+    workflowStage: WorkflowStage | None = None
     severity: str = "P3"
     symptoms: list[str] = Field(default_factory=list)
     confirmedFacts: list[Evidence] = Field(default_factory=list)
@@ -118,6 +126,10 @@ class StatusUpdateRequest(BaseModel):
     root_cause: str | None = Field(default=None, max_length=1000)
     successful_action: str | None = Field(default=None, max_length=2000)
     note: str | None = Field(default=None, max_length=2000)
+
+
+class WorkflowUpdateRequest(BaseModel):
+    stage: WorkflowStage
 
 
 class ExampleReviewRequest(BaseModel):

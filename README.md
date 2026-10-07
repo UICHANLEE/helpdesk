@@ -22,6 +22,8 @@ npm run dev
 
 `http://127.0.0.1:5173/diagnose`를 엽니다. 인증번호는 필요하지 않습니다. 백엔드는 루프백 주소에서 들어오는 요청만 허용합니다. 다른 기기에서 접속하도록 서버를 공개하지 마세요.
 
+`/incidents`는 질문별 카드가 있는 업무 보드입니다. Todo → In Progress → Review → Done 순서로 진행되며, 카드를 드래그하거나 버튼으로 이동할 수 있습니다. 자동 진단이 끝나면 Review로 이동하고, Done은 Incident에서 확인된 원인과 실제 성공한 조치를 저장할 때만 적용됩니다. 기존 목록과 연습 질문은 상단 탭에서 확인할 수 있습니다.
+
 ### Docker로 계속 실행
 
 Docker Desktop과 호스트의 Ollama를 실행한 뒤 저장소 루트에서 `docker compose up -d --build`를 실행합니다. 화면은 `http://127.0.0.1:5173`에서 열립니다. Compose의 두 서비스는 `restart: unless-stopped`로 Docker 재시작 후에도 다시 올라옵니다. Docker Desktop 자체는 로그인 후 실행되도록 설정해야 합니다.

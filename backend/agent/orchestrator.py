@@ -13,7 +13,7 @@ from incident import get_tool_config, quick_response, qwen_model, qwen_model_ava
 from backend.agent.jev import classify
 from backend.knowledge.fallback import from_verified_history
 from backend.llm.qwen import diagnose as qwen_diagnose
-from backend.models import AgentAction, ClaimReference, Classification, Evidence, Hypothesis, IncidentState, IncidentStatus, RaftMatch, TraceClaim
+from backend.models import AgentAction, ClaimReference, Classification, Evidence, Hypothesis, IncidentState, IncidentStatus, RaftMatch, TraceClaim, WorkflowStage
 from backend.raft.retriever import retrieve
 from backend.storage import sqlite as storage
 from backend.tools.registry import execute, tools_for
@@ -64,7 +64,7 @@ async def start(message: str) -> tuple[str, Classification]:
     classification = classification_from(judgment)
     quick = quick_response(parsed, judgment)
     state = IncidentState(
-        id="", status=IncidentStatus.investigating, severity=classification.severity,
+        id="", status=IncidentStatus.investigating, workflowStage=WorkflowStage.todo, severity=classification.severity,
         symptoms=parsed["signals"] or [message[:240]],
         unknowns=["실제 시스템 상태", "근본 원인"], classification=classification,
         diagnosis=quick["diagnosis"], immediateActions=quick["immediate_actions"],
@@ -139,6 +139,8 @@ async def investigate(incident_id: str, parsed: dict[str, Any], judgment: dict[s
         return
     state = IncidentState.model_validate(record["state"])
     try:
+        if state.origin != "example" and state.workflowStage == WorkflowStage.todo:
+            state.workflowStage = WorkflowStage.in_progress
         state.currentStep = "retrieve"
         storage.save_state(state)
         retrieval_span = span(incident_id, "retrieval", "RAFT search")
@@ -211,6 +213,10 @@ async def investigate(incident_id: str, parsed: dict[str, Any], judgment: dict[s
         ]
         state.actions = [AgentAction(id=f"{incident_id}-A1", label=state.recommendedAction, requires_approval=bool(final.get("requires_approval", False)))]
         state.status = IncidentStatus.action_required
+        if state.origin != "example":
+            latest = storage.get_incident(incident_id)
+            latest_stage = IncidentState.model_validate(latest["state"]).workflowStage if latest else state.workflowStage
+            state.workflowStage = WorkflowStage.review if latest_stage == WorkflowStage.in_progress else latest_stage
         state.currentStep = "act"
         user_event = next((event for event in reversed(storage.get_events(incident_id)) if event["type"] == "user"), None)
         references = [ClaimReference(eventId=user_event["id"], relation="reported")] if user_event else []

@@ -1,4 +1,5 @@
 export type IncidentStatus = 'new' | 'investigating' | 'action_required' | 'verifying' | 'resolved'
+export type WorkflowStage = 'todo' | 'in_progress' | 'review' | 'done'
 export type Severity = 'P1' | 'P2' | 'P3' | 'P4'
 export type Complexity = 'SIMPLE' | 'MEDIUM' | 'DEEP'
 
@@ -7,7 +8,7 @@ export interface Classification {
   secondary: string | null
   severity: Severity
   complexity: Complexity
-  source: 'jev' | 'rules' | 'example'
+  source: 'jev' | 'rules' | 'rules_override' | 'example'
   confidence: number | null
 }
 
@@ -40,6 +41,7 @@ export interface IncidentState {
   firstDiagnosis: string | null
   firstActions: string[]
   status: IncidentStatus
+  workflowStage?: WorkflowStage | null
   severity: Severity
   symptoms: string[]
   confirmedFacts: Evidence[]
@@ -62,5 +64,5 @@ export interface IncidentState {
 
 export interface IncidentRecord { id: string; message: string; state: IncidentState; created_at: string; updated_at: string }
 
-export type TimelineType = 'user' | 'agent' | 'jev' | 'retrieval' | 'tool_started' | 'tool_result' | 'evidence' | 'reasoning_started' | 'reasoning' | 'action' | 'verified' | 'status_changed' | 'error' | 'example_seeded' | 'rehearsal_started' | 'rehearsal_interrupted' | 'example_reviewed'
+export type TimelineType = 'user' | 'agent' | 'jev' | 'retrieval' | 'tool_started' | 'tool_result' | 'evidence' | 'reasoning_started' | 'reasoning' | 'action' | 'verified' | 'status_changed' | 'workflow_changed' | 'historical_reassessment' | 'classification_revised' | 'error' | 'example_seeded' | 'rehearsal_started' | 'rehearsal_interrupted' | 'example_reviewed'
 export interface TimelineEvent { id: number; incident_id: string; type: TimelineType; data: Record<string, unknown>; created_at: string }

@@ -23,5 +23,6 @@ def from_verified_history(matches: list[dict[str, Any]]) -> dict[str, Any] | Non
         "diagnosis": f"유사 해결 기록 {case_id}: {historical_cause} (현재 원인은 미확인)",
         "immediate_actions": [check],
         "recommended_action": check,
+        "hypotheses": [{"name": historical_cause, "rationale": f"{case_id}의 확인된 해결 기록과 증상이 유사하나 현재 건은 검증 전"}],
         "historical_case_id": case_id,
     }
