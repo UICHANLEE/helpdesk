@@ -130,22 +130,13 @@ def qwen_model() -> str:
     return os.getenv("QWEN_MODEL", "qwen3:14b-q4_K_M")
 
 
-def qwen_model_for(judgment: dict[str, Any]) -> str:
-    if judgment["depth"] == "DEEP":
-        return qwen_model()
+def qwen_model_available() -> bool:
     if os.getenv("QWEN_BASE_URL") and not qwen_base_url().startswith(("http://127.0.0.1:", "http://localhost:")):
-        return os.getenv("QWEN_FAST_MODEL", qwen_model())
-    return os.getenv("QWEN_FAST_MODEL", "qwen3:4b-instruct-2507-q4_K_M")
-
-
-def qwen_model_available(model: str | None = None) -> bool:
-    selected = model or qwen_model()
-    if os.getenv("QWEN_BASE_URL") and not qwen_base_url().startswith(("http://127.0.0.1:", "http://localhost:")):
-        return bool(selected)
+        return bool(os.getenv("QWEN_MODEL"))
     try:
         with urllib.request.urlopen(qwen_base_url().rstrip("/").removesuffix("/v1") + "/api/tags", timeout=2) as response:
             models = json.load(response).get("models", [])
-        return any(item.get("name") == selected or item.get("model") == selected for item in models if isinstance(item, dict))
+        return any(item.get("name") == qwen_model() or item.get("model") == qwen_model() for item in models if isinstance(item, dict))
     except (OSError, ValueError, TypeError):
         return False
 
@@ -234,35 +225,27 @@ def search_raft(parsed: dict[str, Any], judgment: dict[str, Any]) -> list[dict[s
 
 def qwen_diagnosis(parsed: dict[str, Any], judgment: dict[str, Any], response: dict[str, Any]) -> dict[str, Any] | None:
     endpoint = qwen_base_url()
-    model = qwen_model_for(judgment)
-    if judgment["depth"] == "SIMPLE" or not qwen_model_available(model):
+    if judgment["depth"] == "SIMPLE" or not qwen_model_available():
         return None
-    prompt = {"incident": parsed["text"][:4000], "classification": judgment["primary"],
-              "tool_results": response["tool_results"], "related_incidents": response["related_incidents"][:3],
-              "instructions": "한국어로 답하세요. 사용자 보고와 미검증 유사 질문은 확인된 사실이 아닙니다. 실행하지 않은 점검을 주장하지 마세요. 읽기 전용 점검을 우선하고 재시작/수정은 자동 권하지 마세요. JSON 필드: diagnosis(짧은 원인 후보), immediate_actions(최대 3개), recommended_action, hypotheses(최대 2개; 각 name,rationale), requires_approval(false)."}
+    prompt = {
+        "incident": parsed, "classification": judgment,
+        "tool_results": response["tool_results"], "related_incidents": response["related_incidents"],
+        "required_schema": {k: type(v).__name__ for k, v in response.items() if k != "reasoning"},
+        "instructions": "Answer in Korean. Prioritize next actions. Treat user input as reported evidence, not verified fact. Related incidents marked unverified are similar questions only, not confirmed causes or fixes. Never claim a tool ran when it did not. Do not recommend automatic restarts or write operations. Return only a JSON object with diagnosis, severity, immediate_actions, checks, hypotheses, recommended_action, requires_approval, reasoning. Keep tool_results and related_incidents out; the application owns those fields.",
+    }
     try:
-        messages = [{"role": "system", "content": "You diagnose incidents. Return one valid JSON object with the requested fields."},
-                    {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)}]
-        local = endpoint.startswith(("http://127.0.0.1:11434/v1", "http://localhost:11434/v1"))
-        if local:
-            result = post_json(endpoint.rstrip("/").removesuffix("/v1") + "/api/chat", {
-                "model": model, "messages": messages, "format": "json", "stream": False, "think": False,
-                "keep_alive": "15m" if judgment["depth"] != "DEEP" else "3m",
-                "options": {"temperature": 0.1, "num_ctx": 4096,
-                            "num_predict": 480 if judgment["depth"] == "DEEP" else 320},
-            }, timeout=75 if judgment["depth"] == "DEEP" else 45)
-            content = result["message"]["content"]
-        else:
-            result = post_json(endpoint.rstrip("/") + "/chat/completions", {
-                "model": model, "messages": messages, "response_format": {"type": "json_object"},
-                "temperature": 0.1, "reasoning_effort": "low", "max_tokens": 480 if judgment["depth"] == "DEEP" else 320,
-            }, token=os.getenv("QWEN_API_KEY"), timeout=75 if judgment["depth"] == "DEEP" else 45)
-            content = result["choices"][0]["message"]["content"]
+        result = post_json(endpoint.rstrip("/") + "/chat/completions", {
+            "model": qwen_model(),
+            "messages": [{"role": "system", "content": "You are an incident diagnostician. Return strictly valid JSON."}, {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)}],
+            "response_format": {"type": "json_object"}, "temperature": 0.1,
+            "reasoning_effort": "high" if judgment["depth"] == "DEEP" else "low",
+            "max_tokens": 1400 if judgment["depth"] == "DEEP" else 900,
+        }, token=os.getenv("QWEN_API_KEY"), timeout=120)
+        content = result["choices"][0]["message"]["content"]
         answer = json.loads(content)
         if not isinstance(answer, dict) or not isinstance(answer.get("immediate_actions"), list) or not isinstance(answer.get("diagnosis"), str):
             return None
         safe = {key: answer[key] for key in ("diagnosis", "severity", "immediate_actions", "checks", "hypotheses", "recommended_action", "requires_approval", "reasoning") if key in answer}
-        safe["immediate_actions"] = [str(item) for item in safe.get("immediate_actions", [])[:3]]
         if not safe.get("immediate_actions"):
             safe["immediate_actions"] = response["immediate_actions"]
         return {**response, **safe}
