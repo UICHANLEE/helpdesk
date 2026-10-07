@@ -1,0 +1,37 @@
+name: raft-helpdesk
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      RAFT_DB_PATH: /app/backend/data/raft.sqlite3
+      RAFT_GOOGLE_SERVICE_ACCOUNT_FILE: /run/secrets/google-service-account.json
+      TYPESAFE_API_KEY_FILE: /run/secrets/typesafe_api_key.txt
+      QWEN_BASE_URL: http://host.docker.internal:11434/v1
+      QWEN_MODEL: ${QWEN_MODEL:-qwen3:14b-q4_K_M}
+      OLLAMA_EMBED_URL: http://host.docker.internal:11434/api/embed
+      RAFT_DOCKER_INTERNAL: "1"
+    volumes:
+      - ./backend/data:/app/backend/data
+      - ./backend/backups:/app/backend/backups
+      - ./backend/reports/data:/app/backend/reports/data
+      - ./secrets:/run/secrets:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:5173:80"

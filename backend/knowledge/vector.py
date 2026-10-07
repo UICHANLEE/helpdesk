@@ -14,7 +14,7 @@ from typing import Any
 from backend.storage import sqlite as storage
 
 MODEL = os.getenv("RAFT_EMBED_MODEL", "qwen3-embedding:0.6b")
-OLLAMA_EMBED_URL = "http://127.0.0.1:11434/api/embed"
+OLLAMA_EMBED_URL = os.getenv("OLLAMA_EMBED_URL", "http://127.0.0.1:11434/api/embed")
 
 
 def embed(texts: list[str]) -> list[list[float]]:

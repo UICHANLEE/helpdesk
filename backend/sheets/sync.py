@@ -41,7 +41,7 @@ def status() -> dict[str, Any]:
             pass
     return {"configured": bool(email), "service_account_email": email,
             "credential_path": str(path), "sheet_url": SHEET_URL,
-            "last_sync": storage.get_sheet_sync()}
+            "last_sync": storage.get_sheet_sync(), "queue": storage.sheet_outbox_status()}
 
 
 def _rows(values: list[list[Any]], headers: list[str], key_column: str) -> tuple[dict[str, tuple[int, list[str]]], int]:
@@ -140,6 +140,7 @@ def sync_now() -> dict[str, Any]:
         except (OSError, ValueError, GoogleAuthError) as error:
             raise SheetSyncError("Google 인증 설정을 읽지 못했습니다. 서비스 계정 파일과 설치 상태를 확인하세요.", 503) from error
 
+        generation = storage.sheet_outbox_status()["generation"]
         data = snapshot()
         metadata = _request_json(session, "GET", f"{BASE_URL}/{SPREADSHEET_ID}",
                                  params={"fields": "sheets(properties(sheetId,title,gridProperties(rowCount)))"})
@@ -176,6 +177,7 @@ def sync_now() -> dict[str, Any]:
             if remaining["writes"]:
                 raise SheetSyncError("업로드 후 검증에서 일부 행이 일치하지 않았습니다. 다시 업로드하세요.")
         saved = storage.record_sheet_sync(changes["updated_rows"], changes["inserted_rows"], changes["unchanged_rows"])
+        storage.mark_sheet_synced(generation)
         return {**saved, "sheet_url": SHEET_URL}
     finally:
         _sync_lock.release()

@@ -13,7 +13,9 @@ from fastapi.responses import JSONResponse
 from backend.api import actions, diagnose, incidents, infra, knowledge, reports, stream, tools
 from backend.knowledge import service as knowledge_service, vector
 from backend.reports import daily
+from backend.sheets import sync as sheets
 from backend.storage import backup
+from backend.storage import sqlite as storage
 from backend.storage.sqlite import init_db
 
 
@@ -38,18 +40,40 @@ async def maintenance() -> None:
         await asyncio.sleep(60)
 
 
+async def sheet_delivery() -> None:
+    """Near-immediate delivery with a durable SQLite retry signal."""
+    while True:
+        queue = storage.sheet_outbox_status()
+        if not queue["pending"]:
+            await asyncio.sleep(1)
+            continue
+        if not sheets.status()["configured"]:
+            await asyncio.sleep(15)
+            continue
+        try:
+            await asyncio.to_thread(sheets.sync_now)
+        except sheets.SheetSyncError as error:
+            storage.mark_sheet_failed(str(error))
+            await asyncio.sleep(30)
+        except Exception as error:
+            storage.mark_sheet_failed(type(error).__name__)
+            await asyncio.sleep(30)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     if os.getenv("VERCEL"):
         raise RuntimeError("This application is configured for local use only")
     init_db()
     worker = asyncio.create_task(maintenance())
+    sheet_worker = asyncio.create_task(sheet_delivery())
     try:
         yield
     finally:
         worker.cancel()
+        sheet_worker.cancel()
         try:
-            await worker
+            await asyncio.gather(worker, sheet_worker)
         except asyncio.CancelledError:
             pass
 
@@ -64,7 +88,13 @@ async def local_only(request: Request, call_next):
         loopback = ipaddress.ip_address(request.client.host).is_loopback if request.client else False
     except ValueError:
         loopback = False
-    if not loopback:
+    docker_peer = False
+    if os.getenv("RAFT_DOCKER_INTERNAL") == "1" and request.client:
+        try:
+            docker_peer = ipaddress.ip_address(request.client.host).is_private
+        except ValueError:
+            pass
+    if not loopback and not docker_peer:
         return JSONResponse({"detail": "로컬 연결만 허용합니다."}, status_code=403)
     return await call_next(request)
 

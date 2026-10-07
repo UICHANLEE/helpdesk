@@ -22,6 +22,12 @@ npm run dev
 
 `http://127.0.0.1:5173/diagnose`를 엽니다. 인증번호는 필요하지 않습니다. 백엔드는 루프백 주소에서 들어오는 요청만 허용합니다. 다른 기기에서 접속하도록 서버를 공개하지 마세요.
 
+### Docker로 계속 실행
+
+Docker Desktop과 호스트의 Ollama를 실행한 뒤 저장소 루트에서 `docker compose up -d --build`를 실행합니다. 화면은 `http://127.0.0.1:5173`에서 열립니다. Compose의 두 서비스는 `restart: unless-stopped`로 Docker 재시작 후에도 다시 올라옵니다. Docker Desktop 자체는 로그인 후 실행되도록 설정해야 합니다.
+
+SQLite 원본·백업·엑셀 파일은 호스트의 `backend/data`, `backend/backups`, `backend/reports/data`에 연결해 컨테이너를 다시 만들어도 보존합니다. `secrets`는 읽기 전용으로 연결하며 Docker 이미지에 포함하지 않습니다. Docker 백엔드는 `host.docker.internal`을 통해 호스트 Ollama에 접근합니다. `docker compose ps`로 상태를 확인하고 `docker compose logs -f backend`로 동기화 오류를 볼 수 있습니다.
+
 ## 기록과 백업
 
 - 모든 새 질문과 Incident 이벤트는 `backend/data/raft.sqlite3`에 저장됩니다. 기존 로컬 데이터는 그대로 유지됩니다.
@@ -30,12 +36,12 @@ npm run dev
 - 질문·상황·진단·조치·확인된 해결 결과를 한국 시간 기준 날짜별로 집계합니다. `backend/reports/data/YYYY-MM-DD.xlsx`에 업무 요약과 질문 로그 시트를 만듭니다. 화면의 **Daily Reports**에서 날짜별 확인과 다운로드가 가능합니다.
 - 서버가 실행 중일 때 60초마다 SQLite의 일관된 복사본을 `backend/backups/raft-YYYY-MM-DD.sqlite3`에 갱신합니다. 이전 날짜의 백업은 보존합니다. **Daily Reports → 지금 백업**으로 즉시 복사할 수도 있습니다.
 - SQLite 원본, 백업, 엑셀, 비밀키는 Git에서 제외됩니다. 컴퓨터 전체가 손상될 상황에 대비하려면 `backend/data`, `backend/backups`, `backend/reports/data`를 개인 백업 디스크에 함께 복사하세요.
-- [SMC-Helpdesk Google Sheet](https://docs.google.com/spreadsheets/d/1DxtdDGSBx5L8FbHWsd8hATeQj24_Wyfd_GG1dNuf21E/edit)에 질문 로그, 일별 요약, FAQ를 기록합니다. Codex 자동화가 매일 16:50(컴퓨터 현지 시간)에 동기화하고, **Daily Reports → 지금 업로드**로 즉시 반영할 수도 있습니다. Incident ID·날짜·FAQ ID를 각각 고유 키로 사용해 재실행해도 중복 행을 만들지 않습니다. 로컬 SQLite가 원본이며, Google Sheet는 공유·열람용 복사본입니다.
+- [SMC-Helpdesk Google Sheet](https://docs.google.com/spreadsheets/d/1DxtdDGSBx5L8FbHWsd8hATeQj24_Wyfd_GG1dNuf21E/edit)에 질문 로그, 일별 요약, FAQ를 기록합니다. 질문이 생성되거나 진단·답변·해결 기록이 바뀌면 SQLite에 전송 대기를 남기고 백그라운드에서 바로 업로드합니다. 실패하면 대기 상태를 유지하고 재시도합니다. **Daily Reports → 지금 업로드**도 사용할 수 있습니다. Incident ID·날짜·FAQ ID를 각각 고유 키로 사용해 재실행해도 중복 행을 만들지 않습니다. 로컬 SQLite가 원본이며, Google Sheet는 공유·열람용 복사본입니다.
 - 동기화에 사용할 행은 `.venv/bin/python -m backend.sheets.snapshot`으로 확인할 수 있습니다. 질문·상황·조치에 민감 정보가 있다면 Google Sheet 공유 설정을 확인하세요.
 
 ### 수동 업로드 연결
 
-앱 서버에는 Codex의 Google 연결 권한이 전달되지 않습니다. 링크가 있는 사용자에게 편집 권한을 주어도 Google Sheets API는 별도 인증을 요구합니다. 이 대화에서 **지금 업로드**라고 요청하면 연결된 Google 계정으로 바로 반영할 수 있습니다. 앱 화면의 버튼을 사용하려면 별도의 Google 서비스 계정이 필요합니다.
+앱 서버에는 Codex의 Google 연결 권한이 전달되지 않습니다. 링크가 있는 사용자에게 편집 권한을 주어도 Google Sheets API는 별도 인증을 요구합니다. 자동 업로드와 앱 화면의 버튼에는 Google 서비스 계정이 필요합니다. 키가 없으면 질문과 답변은 로컬 DB에 보존되고 전송 대기 상태가 표시됩니다.
 
 1. Google Cloud에서 Sheets API를 활성화하고 서비스 계정의 JSON 키를 만듭니다.
 2. 키 파일을 이 저장소의 `secrets/google-service-account.json`에 저장합니다. 다른 경로를 쓰려면 `RAFT_GOOGLE_SERVICE_ACCOUNT_FILE` 환경 변수를 지정합니다. `secrets/`는 Git에서 제외됩니다.

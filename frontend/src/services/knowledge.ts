@@ -7,7 +7,7 @@ export interface KnowledgeData { stats: { questions: number; resolved_knowledge:
 export interface DailyReport { date: string; summary: string; questions: number; resolved: number; domains: Record<string, number>; records?: Array<Record<string, string>> }
 export interface StorageStatus { database_path: string; backup_dir: string; backup_count: number; latest_backup: string | null; latest_backup_at: string | null }
 export interface SheetSyncResult { completed_at: string; updated_rows: number; inserted_rows: number; unchanged_rows: number; sheet_url: string }
-export interface SheetSyncStatus { configured: boolean; service_account_email: string | null; credential_path: string; sheet_url: string; last_sync: SheetSyncResult | null }
+export interface SheetSyncStatus { configured: boolean; service_account_email: string | null; credential_path: string; sheet_url: string; last_sync: SheetSyncResult | null; queue: { pending: boolean; generation: number; synced_generation: number; updated_at: string | null; last_attempt_at: string | null; last_error: string | null } }
 
 export const getKnowledge = (query = '') => api<KnowledgeData>(`/knowledge?query=${encodeURIComponent(query)}`)
 export const publishFaq = (body: { incident_id: string; question: string; answer: string }) => api<Faq>('/knowledge/faq', { method: 'POST', body: JSON.stringify(body) })

@@ -61,13 +61,23 @@ def init_db() -> None:
             updated_rows INTEGER NOT NULL, inserted_rows INTEGER NOT NULL,
             unchanged_rows INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS sheet_outbox (
+            id INTEGER PRIMARY KEY CHECK(id = 1), generation INTEGER NOT NULL,
+            synced_generation INTEGER NOT NULL, updated_at TEXT NOT NULL,
+            last_attempt_at TEXT, last_error TEXT
+        );
         CREATE TABLE IF NOT EXISTS knowledge_vectors (
             document_id TEXT PRIMARY KEY, model TEXT NOT NULL, content_hash TEXT NOT NULL,
             dimensions INTEGER NOT NULL, embedding BLOB NOT NULL, updated_at TEXT NOT NULL
         );
         """)
+        has_live = False
         for row in db.execute("SELECT id, message, state, created_at, updated_at FROM incidents").fetchall():
-            _index_incident(db, row["id"], row["message"], IncidentState.model_validate_json(row["state"]), row["updated_at"])
+            state = IncidentState.model_validate_json(row["state"])
+            _index_incident(db, row["id"], row["message"], state, row["updated_at"])
+            has_live |= state.origin != "example"
+        if has_live and not db.execute("SELECT 1 FROM sheet_outbox WHERE id=1").fetchone():
+            _queue_sheet(db, datetime.now(timezone.utc).isoformat())
 
 
 def _index_incident(db: sqlite3.Connection, incident_id: str, message: str, state: IncidentState, now: str) -> None:
@@ -84,6 +94,20 @@ def _index_incident(db: sqlite3.Connection, incident_id: str, message: str, stat
          json.dumps(actions, ensure_ascii=False), domain, knowledge_status, now))
 
 
+def _sheet_projection(state: IncidentState) -> str:
+    """Only changes visible in the Google Sheet should enqueue a write."""
+    fields = ("status", "symptoms", "classification", "diagnosis", "immediateActions",
+              "recommendedAction", "actions", "resolution")
+    data = state.model_dump(mode="json")
+    return json.dumps({key: data.get(key) for key in fields}, ensure_ascii=False, sort_keys=True)
+
+
+def _queue_sheet(db: sqlite3.Connection, now: str) -> None:
+    db.execute("""INSERT INTO sheet_outbox(id, generation, synced_generation, updated_at)
+        VALUES (1, 1, 0, ?) ON CONFLICT(id) DO UPDATE SET
+        generation=sheet_outbox.generation+1, updated_at=excluded.updated_at""", (now,))
+
+
 def create_incident(message: str, state: IncidentState) -> str:
     now = datetime.now(timezone.utc).isoformat()
     with _lock, _connection() as db:
@@ -92,16 +116,21 @@ def create_incident(message: str, state: IncidentState) -> str:
         state.id = incident_id
         db.execute("INSERT INTO incidents VALUES (?, ?, ?, ?, ?)", (incident_id, message, state.model_dump_json(), now, now))
         _index_incident(db, incident_id, message, state, now)
+        if state.origin != "example":
+            _queue_sheet(db, now)
     return incident_id
 
 
 def save_state(state: IncidentState) -> None:
     now = datetime.now(timezone.utc).isoformat()
     with _lock, _connection() as db:
-        row = db.execute("SELECT message FROM incidents WHERE id=?", (state.id,)).fetchone()
+        row = db.execute("SELECT message, state FROM incidents WHERE id=?", (state.id,)).fetchone()
         if row:
+            previous = IncidentState.model_validate_json(row["state"])
             db.execute("UPDATE incidents SET state=?, updated_at=? WHERE id=?", (state.model_dump_json(), now, state.id))
             _index_incident(db, state.id, row["message"], state, now)
+            if state.origin != "example" and _sheet_projection(previous) != _sheet_projection(state):
+                _queue_sheet(db, now)
 
 
 def get_incident(incident_id: str) -> dict[str, Any] | None:
@@ -169,7 +198,31 @@ def save_faq(signature: str, question: str, answer: str) -> dict[str, Any]:
             ON CONFLICT(signature) DO UPDATE SET question=excluded.question, answer=excluded.answer,
             updated_at=excluded.updated_at""", (signature, question, answer, now))
         row = db.execute("SELECT * FROM faq WHERE signature=?", (signature,)).fetchone()
+        _queue_sheet(db, now)
     return dict(row)
+
+
+def sheet_outbox_status() -> dict[str, Any]:
+    with _connection() as db:
+        row = db.execute("SELECT * FROM sheet_outbox WHERE id=1").fetchone()
+    if not row:
+        return {"pending": False, "generation": 0, "synced_generation": 0,
+                "updated_at": None, "last_attempt_at": None, "last_error": None}
+    data = dict(row)
+    return {**data, "pending": data["generation"] > data["synced_generation"]}
+
+
+def mark_sheet_synced(generation: int) -> None:
+    with _lock, _connection() as db:
+        db.execute("""UPDATE sheet_outbox SET synced_generation=MAX(synced_generation, ?),
+            last_attempt_at=?, last_error=NULL WHERE id=1""",
+            (generation, datetime.now(timezone.utc).isoformat()))
+
+
+def mark_sheet_failed(message: str) -> None:
+    with _lock, _connection() as db:
+        db.execute("UPDATE sheet_outbox SET last_attempt_at=?, last_error=? WHERE id=1",
+                   (datetime.now(timezone.utc).isoformat(), message[:500]))
 
 
 def list_vectors(model: str) -> list[dict[str, Any]]:

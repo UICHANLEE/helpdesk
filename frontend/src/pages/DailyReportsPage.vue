@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import {
   createBackup, getDailyReport, getSheetSyncStatus, getStorageStatus, listDailyReports,
   syncGoogleSheet, type DailyReport, type SheetSyncStatus, type StorageStatus,
@@ -13,6 +13,7 @@ const storage = ref<StorageStatus | null>(null)
 const sheets = ref<SheetSyncStatus | null>(null)
 const backingUp = ref(false)
 const syncing = ref(false)
+let statusTimer: ReturnType<typeof setInterval> | null = null
 
 async function choose(day: string) {
   try { selected.value = await getDailyReport(day); error.value = '' }
@@ -40,7 +41,9 @@ onMounted(async () => {
     [days.value, storage.value, sheets.value] = await Promise.all([listDailyReports(), getStorageStatus(), getSheetSyncStatus()])
     if (days.value.length) await choose(days.value[0].date)
   } catch { error.value = '일별 기록을 불러오지 못했습니다.' }
+  statusTimer = setInterval(async () => { try { sheets.value = await getSheetSyncStatus() } catch { /* keep last status */ } }, 10000)
 })
+onUnmounted(() => { if (statusTimer) clearInterval(statusTimer) })
 </script>
 
 <template>
@@ -50,7 +53,7 @@ onMounted(async () => {
     <p v-if="error" class="inline-error">{{ error }}</p>
     <div v-if="storage" class="surface-card storage-summary"><div><small>로컬 데이터베이스 · {{ storage.database_path }}</small><strong>백업 {{ storage.backup_count }}개 · 최근 {{ storage.latest_backup || '없음' }}</strong><small>보관 폴더 · {{ storage.backup_dir }}</small></div><button class="secondary-button" :disabled="backingUp" @click="backupNow">{{ backingUp ? '백업 중…' : '지금 백업' }}</button></div>
     <div v-if="sheets" class="surface-card sheet-sync-card">
-      <div><small>GOOGLE SHEET · 매일 16:50 자동 동기화</small><strong>질문 로그 · 일별 요약 · FAQ</strong><small v-if="sheets.last_sync">마지막 앱 업로드 · {{ new Date(sheets.last_sync.completed_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }) }}</small><small v-else>앱에서 업로드한 기록 없음</small><small v-if="!sheets.configured">이 대화에서 “지금 업로드”라고 요청하면 즉시 반영됩니다. 앱 버튼은 별도 Google 인증 파일이 필요합니다: {{ sheets.credential_path }}</small><small v-else>앱 업로드 계정 · {{ sheets.service_account_email }}</small><small v-if="syncMessage" class="sync-feedback">{{ syncMessage }}</small></div>
+      <div><small>GOOGLE SHEET · 질문·답변 등록 시 자동 동기화</small><strong>질문 로그 · 일별 요약 · FAQ</strong><small v-if="sheets.last_sync">마지막 앱 업로드 · {{ new Date(sheets.last_sync.completed_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }) }}</small><small v-else>앱에서 업로드한 기록 없음</small><small v-if="sheets.queue.pending">전송 대기 중 · {{ sheets.queue.generation - sheets.queue.synced_generation }}회 변경</small><small v-else>로컬 변경 사항 전송 완료</small><small v-if="sheets.queue.last_error" class="inline-error">최근 전송 오류 · {{ sheets.queue.last_error }}</small><small v-if="!sheets.configured">자동 업로드를 켜려면 Google 서비스 계정 키가 필요합니다: {{ sheets.credential_path }}</small><small v-else>앱 업로드 계정 · {{ sheets.service_account_email }}</small><small v-if="syncMessage" class="sync-feedback">{{ syncMessage }}</small></div>
       <div class="sheet-sync-actions"><a class="secondary-button" :href="sheets.sheet_url" target="_blank" rel="noopener noreferrer">시트 열기 ↗</a><button class="secondary-button" :disabled="syncing || !sheets.configured" @click="uploadNow">{{ syncing ? '업로드 중…' : sheets.configured ? '지금 업로드' : '앱 연결 필요' }}</button></div>
     </div>
     <div class="report-days"><button v-for="day in days" :key="day.date" class="secondary-button" :class="{ active: selected?.date === day.date }" @click="choose(day.date)">{{ day.date }} · {{ day.questions }}건</button></div>
