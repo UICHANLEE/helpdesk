@@ -7,7 +7,7 @@ export interface Classification {
   secondary: string | null
   severity: Severity
   complexity: Complexity
-  source: 'jev' | 'rules'
+  source: 'jev' | 'rules' | 'example'
   confidence: number | null
 }
 
@@ -26,13 +26,15 @@ export interface Hypothesis {
   rationale: string
 }
 
-export interface RaftMatch { id: string; title: string; summary: string; score: number | null; verification: 'verified' | 'unverified' | 'unknown'; retrieval: 'hybrid' | 'lexical' | 'external' }
+export interface RaftMatch { id: string; title: string; summary: string; score: number | null; verification: 'verified' | 'unverified' | 'example' | 'unknown'; retrieval: 'hybrid' | 'lexical' | 'external' }
 export interface AgentAction { id: string; label: string; tool: string | null; requires_approval: boolean; status: string }
-export interface ClaimReference { eventId: number; relation: 'reported' | 'observed' | 'failed_check' | 'historical_match' | 'follow_up_check' | 'operator_verification' }
-export interface TraceClaim { id: string; text: string; verification: 'unverified' | 'operator_verified'; references: ClaimReference[]; createdAt: string }
+export interface ClaimReference { eventId: number; relation: 'reported' | 'observed' | 'failed_check' | 'historical_match' | 'follow_up_check' | 'operator_verification' | 'example_scenario' }
+export interface TraceClaim { id: string; text: string; verification: 'unverified' | 'operator_verified' | 'example'; references: ClaimReference[]; createdAt: string }
 
 export interface IncidentState {
   id: string
+  origin: 'live' | 'example'
+  seedKey: string | null
   status: IncidentStatus
   severity: Severity
   symptoms: string[]

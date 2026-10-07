@@ -23,7 +23,8 @@ def _day(timestamp: str) -> str:
 
 def report(day: str, incidents: list[dict] | None = None) -> dict:
     date.fromisoformat(day)
-    incidents = [item for item in (incidents if incidents is not None else storage.list_all_incidents()) if _day(item["created_at"]) == day]
+    incidents = [item for item in (incidents if incidents is not None else storage.list_all_incidents())
+                 if item["state"].get("origin") != "example" and _day(item["created_at"]) == day]
     records = []
     for item in incidents:
         state = item["state"]
@@ -50,12 +51,13 @@ def report(day: str, incidents: list[dict] | None = None) -> dict:
 
 
 def available_days() -> list[str]:
-    return sorted({_day(item["created_at"]) for item in storage.list_all_incidents()}, reverse=True)
+    return sorted({_day(item["created_at"]) for item in storage.list_all_incidents()
+                   if item["state"].get("origin") != "example"}, reverse=True)
 
 
 def summaries() -> list[dict]:
     incidents = storage.list_all_incidents()
-    days = sorted({_day(item["created_at"]) for item in incidents}, reverse=True)
+    days = sorted({_day(item["created_at"]) for item in incidents if item["state"].get("origin") != "example"}, reverse=True)
     return [{key: value for key, value in report(day, incidents).items() if key != "records"} for day in days]
 
 
@@ -111,6 +113,7 @@ def export(day: str, incidents: list[dict] | None = None) -> Path:
 def refresh_all(since: datetime | None = None) -> None:
     incidents = storage.list_all_incidents()
     days = {_day(item["created_at"]) for item in incidents
-            if since is None or datetime.fromisoformat(item["updated_at"]) >= since}
+            if item["state"].get("origin") != "example" and
+            (since is None or datetime.fromisoformat(item["updated_at"]) >= since)}
     for day in sorted(days):
         export(day, incidents)

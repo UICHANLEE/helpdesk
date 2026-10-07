@@ -73,7 +73,7 @@ def init_db() -> None:
 def _index_incident(db: sqlite3.Connection, incident_id: str, message: str, state: IncidentState, now: str) -> None:
     domain = state.classification.domain if state.classification else "UNKNOWN"
     verified = state.status.value == "resolved" and bool(state.resolution)
-    knowledge_status = "resolved" if verified else "unverified" if state.status.value == "resolved" else state.status.value
+    knowledge_status = "example" if state.origin == "example" else "resolved" if verified else "unverified" if state.status.value == "resolved" else state.status.value
     diagnosis = state.resolution["rootCause"] if verified else state.diagnosis
     actions = [state.resolution["successfulAction"]] if verified else state.immediateActions
     db.execute("""INSERT INTO knowledge VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -114,8 +114,12 @@ def get_incident(incident_id: str) -> dict[str, Any] | None:
 
 def list_incidents(status: str | None = None) -> list[dict[str, Any]]:
     with _connection() as db:
-        rows = db.execute("SELECT * FROM incidents ORDER BY created_at DESC LIMIT 100").fetchall()
+        rows = db.execute("SELECT * FROM incidents ORDER BY created_at DESC LIMIT 1000").fetchall()
     incidents = [{"id": row["id"], "message": row["message"], "state": json.loads(row["state"]), "created_at": row["created_at"], "updated_at": row["updated_at"]} for row in rows]
+    incidents.sort(key=lambda item: item["state"].get("origin") == "example")
+    if status == "examples":
+        return [item for item in incidents if item["state"].get("origin") == "example"]
+    incidents = [item for item in incidents if item["state"].get("origin") != "example"]
     if status == "active":
         return [item for item in incidents if item["state"]["status"] != "resolved"]
     return [item for item in incidents if item["state"]["status"] == status] if status else incidents

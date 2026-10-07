@@ -70,6 +70,8 @@ class TraceClaim(BaseModel):
 
 class IncidentState(BaseModel):
     id: str
+    origin: str = "live"  # live | example
+    seedKey: str | None = None
     status: IncidentStatus = IncidentStatus.new
     severity: str = "P3"
     symptoms: list[str] = Field(default_factory=list)

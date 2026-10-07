@@ -25,7 +25,7 @@ FAQ_HEADERS = ["FAQ ID", "오류 유형", "질문", "답변", "최종 수정(UTC
 
 
 def snapshot() -> dict:
-    incidents = storage.list_all_incidents()
+    incidents = [item for item in storage.list_all_incidents() if item["state"].get("origin") != "example"]
     incident_rows: list[list[str]] = []
     for item in incidents:
         created = datetime.fromisoformat(item["created_at"]).astimezone(daily.KST)

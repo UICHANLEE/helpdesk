@@ -22,6 +22,7 @@ const router = createRouter({
     { path: '/incidents', component: IncidentsPage, meta: { title: 'Incidents' } },
     { path: '/incidents/active', component: IncidentsPage, props: { status: 'active' }, meta: { title: 'Active Incidents' } },
     { path: '/incidents/resolved', component: IncidentsPage, props: { status: 'resolved' }, meta: { title: 'Resolved Incidents' } },
+    { path: '/incidents/examples', component: IncidentsPage, props: { status: 'examples' }, meta: { title: 'Example Incidents' } },
     { path: '/incidents/:incidentId', component: IncidentDetailPage, meta: { title: 'Incident Workspace' } },
     ...['overview', 'kubernetes', 'database', 'api', 'llm', 'storage'].map(section => ({ path: `/infrastructure/${section}`, component: InfrastructurePage, props: { section }, meta: { title: 'Infrastructure' } })),
     { path: '/infrastructure', redirect: '/infrastructure/overview' },

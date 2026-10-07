@@ -41,7 +41,7 @@ def graph(incident: dict[str, Any], events: list[dict[str, Any]]) -> dict[str, A
             status = "historical"
         else:
             summary = str((data.get("resolution") or {}).get("rootCause") or "운영자 해결 확인")
-            status = "operator_verified"
+            status = "example" if state.get("origin") == "example" else "operator_verified"
         evidence.append({"id": evidence_id, "event_id": event["id"], "kind": event["type"],
                          "summary": summary, "status": status, "span_id": span_id})
         if span_id:

@@ -27,6 +27,8 @@ def publish_faq(request: FaqRequest) -> dict:
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
     state = incident["state"]
+    if state.get("origin") == "example":
+        raise HTTPException(status_code=409, detail="예시 Incident는 실제 확인된 해결 기록이 아니므로 FAQ로 게시할 수 없습니다.")
     if state["status"] != "resolved" or not state.get("resolution"):
         raise HTTPException(status_code=409, detail="확인된 원인과 성공한 조치로 Incident를 해결 처리한 뒤 FAQ를 게시하세요.")
     domain = (state.get("classification") or {}).get("domain", "UNKNOWN")

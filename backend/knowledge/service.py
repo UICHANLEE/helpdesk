@@ -21,12 +21,13 @@ def corpus_documents() -> list[dict[str, Any]]:
     result = []
     for item in documents:
         verified = item["status"] == "resolved"
+        example = item["status"] == "example"
         content = f"{item['question']} {item['situation']}"
-        if verified:
+        if verified or example:
             content += f" {item['diagnosis']} {' '.join(item['actions'])}"
         result.append({"id": item["incident_id"], "type": "incident", "question": item["question"],
-                       "answer": item["diagnosis"] if verified else "", "actions": item["actions"] if verified else [],
-                       "status": "verified" if verified else "unverified", "content": content.strip()})
+                       "answer": item["diagnosis"] if verified or example else "", "actions": item["actions"] if verified or example else [],
+                       "status": "example" if example else "verified" if verified else "unverified", "content": content.strip()})
     for item in faq:
         result.append({"id": f"FAQ-{item['id']}", "type": "faq", "question": item["question"],
                        "answer": item["answer"], "actions": [], "status": "verified",
@@ -55,6 +56,8 @@ def search(query: str, limit: int = 5, exclude_id: str | None = None) -> list[di
         if not lexical and semantic < .45:
             continue
         score = .65 * semantic + .35 * lexical if dense else lexical
+        if item["status"] == "example":
+            score *= .85  # Hypothetical scenarios cannot outrank equally relevant verified resolutions.
         found.append({key: item[key] for key in ("id", "type", "question", "answer", "actions", "status")} |
                      {"score": round(score, 3), "retrieval": "hybrid" if dense else "lexical"})
     return sorted(found, key=lambda item: item["score"], reverse=True)[:limit]
@@ -63,6 +66,8 @@ def search(query: str, limit: int = 5, exclude_id: str | None = None) -> list[di
 def frequent_errors(limit: int = 10) -> list[dict[str, Any]]:
     grouped: dict[str, dict[str, Any]] = {}
     for item in storage.list_knowledge(limit=10000):
+        if item["status"] == "example":
+            continue
         if not item["diagnosis"]:
             continue
         key = signature(item["domain"], item["diagnosis"])
@@ -84,6 +89,8 @@ def frequent_errors(limit: int = 10) -> list[dict[str, Any]]:
 
 def stats() -> dict[str, Any]:
     documents = storage.list_knowledge(limit=10000)
-    domains = Counter(item["domain"] for item in documents)
-    return {"questions": len(documents), "resolved_knowledge": sum(item["status"] == "resolved" for item in documents),
+    domains = Counter(item["domain"] for item in documents if item["status"] != "example")
+    return {"questions": sum(item["status"] != "example" for item in documents),
+            "resolved_knowledge": sum(item["status"] == "resolved" for item in documents),
+            "example_count": sum(item["status"] == "example" for item in documents),
             "faq_count": len(storage.list_faq()), "domains": dict(domains), "vector": vector.status()}

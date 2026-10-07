@@ -6,13 +6,13 @@ function summary(event: TimelineEvent): string {
   const data = event.data
   if (event.type === 'user') return String(data.message || '')
   if (event.type === 'jev') { const c = data.classification as Record<string, unknown> | undefined; return `${c?.domain || 'UNKNOWN'}${c?.secondary ? ` → ${c.secondary}` : ''} · ${c?.severity || ''} / ${c?.complexity || ''}` }
-  if (event.type === 'retrieval') { const matches = data.matches as Array<{id:string;score?:number;verification?:string}> | undefined; const trace = data.trace as Record<string, unknown> | undefined; const timing = typeof trace?.duration_ms === 'number' ? ` · ${trace.duration_ms}ms` : ''; return (matches?.length ? matches.map(item => `${item.id} (${item.verification === 'verified' ? '확인됨' : '미검증'})${item.score ? ` · 점수 ${item.score.toFixed(2)}` : ''}`).join(' · ') : '일치하는 과거 장애가 없습니다.') + timing }
+  if (event.type === 'retrieval') { const matches = data.matches as Array<{id:string;score?:number;verification?:string}> | undefined; const trace = data.trace as Record<string, unknown> | undefined; const timing = typeof trace?.duration_ms === 'number' ? ` · ${trace.duration_ms}ms` : ''; return (matches?.length ? matches.map(item => `${item.id} (${item.verification === 'verified' ? '확인됨' : item.verification === 'example' ? '예시' : '미검증'})${item.score ? ` · 점수 ${item.score.toFixed(2)}` : ''}`).join(' · ') : '일치하는 과거 장애가 없습니다.') + timing }
   if (event.type === 'tool_started') return `${data.tool} 실행 중`
   if (event.type === 'tool_result') { const result = data.result as Record<string, unknown> | undefined; const trace = data.trace as Record<string, unknown> | undefined; return `${data.tool} · ${result?.summary || result?.status || ''}${typeof trace?.duration_ms === 'number' ? ` · ${trace.duration_ms}ms` : ''}` }
   if (event.type === 'reasoning_started') return `${data.model} · ${data.complexity} 판단 진행 중`
   if (event.type === 'reasoning') return '진단 Trace와 원인 후보가 업데이트되었습니다.'
   if (event.type === 'action') return String(data.recommended_action || data.decision || '다음 조치 제안')
-  if (event.type === 'status_changed') return data.status === 'resolved' ? '운영자가 Incident를 해결됨으로 표시했습니다.' : `상태 변경: ${data.status}`
+  if (event.type === 'status_changed') return data.origin === 'example' ? '가상 사례에 원인과 조치 예시를 기록했습니다.' : data.status === 'resolved' ? '운영자가 Incident를 해결됨으로 표시했습니다.' : `상태 변경: ${data.status}`
   return String(data.message || '')
 }
 </script>
