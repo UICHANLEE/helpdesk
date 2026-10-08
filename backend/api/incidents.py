@@ -130,8 +130,8 @@ async def start_rehearsal(incident_id: str) -> dict:
 async def review_example(incident_id: str, request: ExampleReviewRequest) -> dict:
     incident = require_incident(incident_id)
     state = IncidentState.model_validate(incident["state"])
-    if state.origin != "example" or state.examplePhase not in ("awaiting_review", "reviewed"):
-        raise HTTPException(status_code=409, detail="진단이 끝난 예시만 검토할 수 있습니다.")
+    if state.origin != "example" or state.examplePhase not in ("awaiting_review", "reviewed", "preloaded"):
+        raise HTTPException(status_code=409, detail="완료된 예시만 수정할 수 있습니다.")
     if not request.root_cause.strip() or not request.successful_action.strip():
         raise HTTPException(status_code=422, detail="원인과 조치를 입력하세요.")
     original = state.firstDiagnosis or ""
@@ -146,6 +146,7 @@ async def review_example(incident_id: str, request: ExampleReviewRequest) -> dic
                         "note": request.note.strip(), "reviewedAt": datetime.now(timezone.utc).isoformat(),
                         "verification": "hypothetical_reference", "reviewSource": request.review_source}
     state.status = IncidentStatus.resolved
+    state.workflowStage = WorkflowStage.done
     state.currentStep = "verify"
     state.examplePhase = "reviewed"
     storage.save_state(state)

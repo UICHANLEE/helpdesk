@@ -34,7 +34,7 @@ SQLite 원본·백업·엑셀 파일은 호스트의 `backend/data`, `backend/ba
 
 - 모든 새 질문과 Incident 이벤트는 `backend/data/raft.sqlite3`에 저장됩니다. 기존 로컬 데이터는 그대로 유지됩니다.
 - 연습용 질문 1,000건은 `/incidents/examples`에서 별도로 봅니다. 이 사례는 실제 처리 실적이 아니므로 Dashboard·Daily Reports·Excel·Google Sheet·FAQ 빈도와 게시 후보에 포함되지 않습니다.
-- 새 질문도 유사 질문 검색을 위해 색인합니다. 사람이 근본 원인과 실제 성공한 조치를 확인한 Incident와 게시된 FAQ만 **확인된 해결 근거**로 사용합니다. 질문 기록의 누적과 모델 가중치 재학습은 별개입니다.
+- 새 질문도 유사 질문 검색을 위해 색인합니다. 실제 운영에서 확인한 해결 기록은 `verified`, 사전 작성한 가상 해결 사례는 `example`로 구분해 검색합니다. 질문 기록의 누적과 모델 가중치 재학습은 별개입니다.
 - 질문·상황·진단·조치·확인된 해결 결과를 한국 시간 기준 날짜별로 집계합니다. `backend/reports/data/YYYY-MM-DD.xlsx`에 업무 요약과 질문 로그 시트를 만듭니다. 화면의 **Daily Reports**에서 날짜별 확인과 다운로드가 가능합니다.
 - 서버가 실행 중일 때 60초마다 SQLite의 일관된 복사본을 `backend/backups/raft-YYYY-MM-DD.sqlite3`에 갱신합니다. 이전 날짜의 백업은 보존합니다. **Daily Reports → 지금 백업**으로 즉시 복사할 수도 있습니다.
 - SQLite 원본, 백업, 엑셀, 비밀키는 Git에서 제외됩니다. 컴퓨터 전체가 손상될 상황에 대비하려면 `backend/data`, `backend/backups`, `backend/reports/data`를 개인 백업 디스크에 함께 복사하세요.
@@ -57,17 +57,17 @@ SQLite 원본·백업·엑셀 파일은 호스트의 `backend/data`, `backend/ba
 - SQLite의 `incidents`에 원본 질문과 상태, `events`에 조사 흐름, `knowledge`에 질문·상황·진단·조치의 검색용 복사본, `faq`에 게시된 답변을 저장합니다.
 - 로컬 Ollama의 `qwen3-embedding:0.6b`가 질문·상황·확인된 해결 내용과 FAQ를 벡터로 만들고 SQLite `knowledge_vectors`에 float32로 저장합니다. 내용이 바뀌면 해당 벡터만 갱신합니다. 모든 질문을 누적하며, 미해결 질문은 추정 진단·제안 조치를 제외하고 색인합니다.
 - 검색은 코사인 유사도와 한국어 두 글자 단위를 포함한 BM25를 결합합니다. 장애 진단에서는 현재 질문을 제외한 Top-3을 Qwen 문맥에 넣습니다. 미해결 질문은 **미검증 유사 질문**으로 명시하며 원인·해결 근거로 취급하지 않습니다. Ollama가 꺼져 있으면 BM25 검색으로 작동합니다.
-- 아직 진단·검토하지 않은 연습 질문의 참고 답안은 RAG 검색에서 제외합니다. 진단 후 수정된 연습 답안은 `example` 출처로 표시하고, 같은 점수의 실제 확인 사례보다 낮게 순위를 매깁니다. Qwen에도 예시를 실제 검증 근거로 취급하지 않도록 전달합니다.
+- 1,000개 예시 질문·상황·원인·조치를 완료 사례로 저장합니다. 원본 100건을 `example` 출처로 검색하고, 같은 원인의 생성 변형 900건은 중복 벡터 없이 기존 100개 패턴의 별칭으로 검색합니다. 예시 점수는 실제 확인 사례보다 낮게 조정하며 Qwen에도 실제 검증 근거로 취급하지 않도록 전달합니다.
 - 벡터는 로컬 SQLite에 영속 저장되며 전용 ANN 엔진은 사용하지 않습니다. 현재 규모에서는 전체 벡터를 비교합니다. 질문 수가 크게 늘어나면 FAISS나 sqlite-vec 같은 인덱스를 추가할 수 있습니다. 이 구조는 검색 시 문맥을 보강하며 Qwen 모델 자체를 재학습하지는 않습니다.
 
 ### RAFT 논문 구조 적용
 
-[RAFT 논문](https://arxiv.org/abs/2403.10131)의 학습 예시 구조인 **질문 + 정답 문서(oracle) + 방해 문서(distractor) → 근거가 있는 답변**을 로컬 데이터 생성 경로에 적용했습니다. `backend/raft/dataset.py`가 실제 운영자가 원인과 성공한 조치를 확인한 Incident만 정답 문서로 사용합니다. 미해결 질문과 가상 연습 사례는 정답이나 방해 문서로 쓰지 않습니다. 다른 원인·다른 질문의 확인된 사례 중 같은 영역에서 관련성이 높은 것을 방해 문서로 고르고, 문서 ID·내용 해시·검증 시각을 남깁니다.
+[RAFT 논문](https://arxiv.org/abs/2403.10131)의 학습 예시 구조인 **질문 + 정답 문서(oracle) + 방해 문서(distractor) → 근거가 있는 답변**을 로컬 데이터 생성 경로에 적용했습니다. `backend/raft/dataset.py`는 실제 운영자 확인 사례와 사전 작성한 가상 해결 사례를 각각 `operator_verified`와 `synthetic_reference`로 표시합니다. 미해결 질문은 정답 문서로 쓰지 않습니다. 유사한 다른 원인의 문서를 방해 문서로 넣고, 근거가 빠진 예시는 답변 유보를 학습하도록 구성했습니다. 생성 사례의 변형은 동일 원천 패턴 단위로 학습/검증 분할합니다.
 
 - `GET /api/v1/knowledge/raft/dataset-status`: 확인된 사례 수, 학습 후보 수, 학습/검증 분할과 준비 상태를 확인합니다. Knowledge 화면에도 표시됩니다.
-- `GET /api/v1/knowledge/raft/dataset`: 로컬에서만 JSONL 학습 후보를 내려받습니다. 파일에는 실제 질문과 해결 기록이 들어가므로 공유 전 검토가 필요합니다. 이 요청은 모델을 학습시키지 않습니다.
+- `GET /api/v1/knowledge/raft/dataset`: 실제 확인 사례와 출처가 표시된 가상 사례의 JSONL 학습 후보를 내려받습니다. 공유 전 실제 질문의 민감 정보를 검토해야 합니다. 이 요청은 모델을 학습시키지 않습니다.
 - 정답 문서가 있는 예시는 문서의 원인·조치를 Incident ID와 함께 답합니다. 정답 문서가 없는 예시는 논문의 암기형 답변 대신 **근거 부족 시 답변 유보**를 학습합니다. 운영 장애에서 근거 없는 확신을 줄이기 위한 안전 변형입니다.
-- 현재 5개의 실제 확인 사례는 재학습하기에 부족합니다. 상태 API의 30건 문턱은 운영상 최소 경고 기준일 뿐 품질 보증이 아닙니다. 학습 전에는 후보의 민감 정보와 잘못 고른 방해 문서를 사람이 검토하고, 질문 유형을 분리한 검증 세트로 기존 Qwen+RAG 대비 평가해야 합니다. 현재 Qwen3 14B Q4 가중치는 변경되지 않았습니다.
+- 가상 예시 1,000건은 검색의 초기 커버리지를 높이고 별도로 표시된 학습 후보를 제공합니다. 이 사례만으로 실제 장애 정확도나 안전성을 보증할 수 없습니다. 학습 전에는 가상 답안·방해 문서를 검토하고, **실제 장애 사례만으로 구성한 별도 평가 세트**에서 기존 Qwen+RAG 대비 검증해야 합니다. 현재 Qwen3 14B Q4 가중치는 변경되지 않았습니다.
 
 ### 학습용 사례 1,000건
 
@@ -75,8 +75,8 @@ SQLite 원본·백업·엑셀 파일은 호스트의 `backend/data`, `backend/ba
 - `backend/knowledge/scenario_patterns.tsv`에 11개 영역의 장애 패턴 100개를 정리하고 `backend/knowledge/generate_scenarios.py`로 상황별 질문 500건, 표현 변형 200건, 정보 부족 질문 200건을 생성했습니다. 따라서 추가된 900건은 서로 다른 900개 원인이 아니라 **100개 원인의 다른 상황·표현·증거 수준**을 다룹니다. 생성 결과는 `backend/knowledge/scenario_cases.tsv`에 저장됩니다.
 - 초기 성능용 지식 인덱스는 `.venv/bin/python -m backend.knowledge.bootstrap`으로 구축합니다. 가상 장애 패턴 100개를 로컬 임베딩에 저장하고 900개 질문 표현을 키워드 검색 별칭으로 사용합니다. 이 검색 결과는 `synthetic`으로 표시하고 현재 장애의 확인된 원인이나 실제 해결 기록으로 취급하지 않습니다. 인덱스 활성화 기록은 DB 옆의 `raft.bootstrap.json`에 저장됩니다.
 - 이 과정은 **RAG 사례 기억을 학습**시키는 것이며 Qwen3 14B의 가중치 미세조정은 아닙니다. 실제 확인된 해결 사례 5건만으로는 RAFT 지도 미세조정의 검증 세트도 구성되지 않습니다. 실제 사례가 충분히 쌓이면 별도 학습 환경에서 LoRA를 검토합니다.
-- 질문은 먼저 답을 숨긴 상태로 등록합니다. `/incidents/examples`에서 각 Incident의 **질문 진단 실행**을 누르면 Jev → RAFT → 연결된 점검 도구 → 로컬 Qwen 진단을 실제로 수행하고 이벤트와 첫 판단을 저장합니다. 완료 후 **판단 수정**에서 참고 답안과 비교해 원인·조치를 고치면 그때 연습 지식으로 검색됩니다. 참고 답안은 가상 시나리오이며 실제 장애를 확인했다는 뜻이 아닙니다.
-- 목록에서 영역·질문 유형을 골라 50건씩 탐색할 수 있습니다. 개별 질문의 **질문 진단 실행**으로 실제 모델 판단을 기다리고, 검토 후 원인·조치를 기록합니다. 기존에 검토한 사례의 결과는 시드 재실행 시 유지됩니다. 다량의 Qwen 진단을 한꺼번에 실행하지 않습니다.
+- 새 데이터베이스에는 `.venv/bin/python -m backend.knowledge.seed_examples` 다음 `.venv/bin/python -m backend.knowledge.promote_examples`를 한 번 실행합니다. Docker 환경에서는 각각 `docker compose exec -T backend python -m backend.knowledge.seed_examples`와 `docker compose exec -T backend python -m backend.knowledge.promote_examples`를 사용합니다. 질문·상황·원인·조치를 완료 기록으로 승격하고 먼저 SQLite 백업을 남깁니다. 이미 사람이 수정한 답안은 보존하며 재실행해도 중복 저장하지 않습니다. 출처는 `hypothetical_reference`로 남깁니다.
+- `/incidents/examples`에서 영역·질문 유형을 골라 50건씩 탐색하고, 각 완료 사례의 **판단 수정**에서 원인과 조치를 보완할 수 있습니다. 사전 작성한 답안은 실제 장애에서 검증한 사실이 아닙니다.
 - 일부를 순서대로 연습하려면 `.venv/bin/python -m backend.knowledge.rehearse_examples --limit 20`처럼 건수를 지정합니다. Qwen이 성공하지 않은 사례는 자동 수정하지 않고 검토 대기 상태로 남깁니다. 이미 완료한 사례는 건너뛰므로 중단 후 재실행할 수 있습니다.
 - 11개 영역의 서로 다른 가상 패턴 30건을 실제 진단 흐름으로 평가한 방법과 결과는 [초기 평가 보고서](docs/benchmarks/2026-10-08-report.md)에 있습니다. `.venv/bin/python -m backend.knowledge.benchmark_examples`는 고정된 계획과 첫 판단을 로컬 `backend/reports/data/`에 저장하며 중단 후 재개할 수 있습니다. 가상 원천과 질문이 겹치므로 이 결과를 실전 정확도로 해석하지 않습니다.
 - 재입력이 필요하면 `.venv/bin/python -m backend.knowledge.seed_examples`를 실행합니다. `seedKey`로 중복 생성을 막고, 처음 입력할 때 `backend/backups/pre-example-seed-*.sqlite3`에 기존 DB 복사본을 남깁니다. 로컬 DB 파일은 Git에 포함되지 않습니다.

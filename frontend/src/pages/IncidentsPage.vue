@@ -45,7 +45,7 @@ watch([() => props.status, () => route.query.q, domain, kind], () => { page.valu
     <div class="page-eyebrow">OPERATIONS <span>·</span> INCIDENTS</div>
     <div class="page-heading"><div><h1>Incidents<span class="title-dot">.</span></h1><p>실제 장애 기록과 가상 연습 사례를 구분해 확인합니다.</p></div><RouterLink to="/incidents" class="primary-button">Open Board ↗</RouterLink></div>
     <div class="tab-links"><RouterLink to="/incidents">Board</RouterLink><RouterLink to="/incidents/list">Live list</RouterLink><RouterLink to="/incidents/active">Active</RouterLink><RouterLink to="/incidents/resolved">Resolved</RouterLink><RouterLink to="/incidents/examples">Examples</RouterLink></div>
-    <p v-if="status === 'examples'" class="soft-text">질문을 열어 진단을 실행하고 첫 판단을 기다린 뒤, 참고 답안과 비교해 원인·조치를 수정하세요. 가상 사례는 실제 장애 해결 실적이나 RAFT 정답에 포함되지 않습니다.</p>
+    <p v-if="status === 'examples'" class="soft-text">질문·상황·원인·조치를 채운 사전 해결 사례입니다. RAFT 검색과 출처가 표시된 학습 데이터에 사용되며, 각 Incident에서 답안을 수정할 수 있습니다. 실제 장애 해결 실적에는 포함되지 않습니다.</p>
     <div v-if="status === 'examples'" class="example-filters"><label>영역<select v-model="domain"><option value="all">전체</option><option v-for="name in domains" :key="name" :value="name">{{ name }}</option></select></label><label>질문 유형<select v-model="kind"><option value="all">전체</option><option v-for="(name, key) in kindNames" :key="key" :value="key">{{ name }}</option></select></label><span>{{ filteredItems.length }} / {{ items.length }}건</span></div>
     <p v-if="route.query.q" class="search-caption">“{{ route.query.q }}” 검색 결과 {{ filteredItems.length }}건</p>
     <div class="list-panel"><IncidentList :incidents="visibleItems" /></div>

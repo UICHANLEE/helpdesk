@@ -8,7 +8,7 @@ export interface Classification {
   secondary: string | null
   severity: Severity
   complexity: Complexity
-  source: 'jev' | 'rules' | 'rules_override' | 'example'
+  source: 'jev' | 'rules' | 'rules_override' | 'example' | 'preloaded_case'
   confidence: number | null
 }
 
@@ -38,7 +38,7 @@ export interface IncidentState {
   questionSubmittedAt: string | null
   origin: 'live' | 'example'
   seedKey: string | null
-  examplePhase: 'seeded' | 'investigating' | 'awaiting_review' | 'reviewed' | null
+  examplePhase: 'seeded' | 'investigating' | 'awaiting_review' | 'preloaded' | 'reviewed' | null
   exampleReference: { situation: string; rootCause: string; successfulAction: string; domain?: string; kind?: string } | null
   firstDiagnosis: string | null
   firstActions: string[]
@@ -59,12 +59,12 @@ export interface IncidentState {
   reasoningTrace: Array<{ step: string; text: string }>
   recommendedAction: string
   providerStatus: Record<string, string>
-  resolution: { rootCause: string; successfulAction: string; note: string; verifiedAt: string } | null
+  resolution: { rootCause: string; successfulAction: string; note: string; verifiedAt?: string; reviewedAt?: string; verification?: string; reviewSource?: string } | null
   traceId: string
   claims: TraceClaim[]
 }
 
 export interface IncidentRecord { id: string; message: string; state: IncidentState; created_at: string; updated_at: string }
 
-export type TimelineType = 'card_created' | 'user' | 'agent' | 'jev' | 'retrieval' | 'tool_started' | 'tool_result' | 'evidence' | 'reasoning_started' | 'reasoning' | 'action' | 'verified' | 'status_changed' | 'workflow_changed' | 'historical_reassessment' | 'classification_revised' | 'error' | 'example_seeded' | 'rehearsal_started' | 'rehearsal_interrupted' | 'example_reviewed'
+export type TimelineType = 'card_created' | 'user' | 'agent' | 'jev' | 'retrieval' | 'tool_started' | 'tool_result' | 'evidence' | 'reasoning_started' | 'reasoning' | 'action' | 'verified' | 'status_changed' | 'workflow_changed' | 'historical_reassessment' | 'classification_revised' | 'error' | 'example_seeded' | 'example_preloaded' | 'rehearsal_started' | 'rehearsal_interrupted' | 'example_reviewed'
 export interface TimelineEvent { id: number; incident_id: string; type: TimelineType; data: Record<string, unknown>; created_at: string }

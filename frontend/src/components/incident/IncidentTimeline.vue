@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import type { TimelineEvent } from '../../types/incident'
 defineProps<{ events: TimelineEvent[] }>()
-const names: Record<string, string> = { card_created: 'CARD', user: 'USER', jev: 'JEV', retrieval: 'RAFT', tool_started: 'TOOL', tool_result: 'TOOL RESULT', reasoning_started: 'QWEN', reasoning: 'REASON', action: 'ACTION', status_changed: 'STATUS', workflow_changed: 'BOARD', historical_reassessment: 'HISTORY', classification_revised: 'ROUTE', error: 'ERROR', example_seeded: 'QUESTION', rehearsal_started: 'PRACTICE', rehearsal_interrupted: 'RETRY', example_reviewed: 'REVISION' }
+const names: Record<string, string> = { card_created: 'CARD', user: 'USER', jev: 'JEV', retrieval: 'RAFT', tool_started: 'TOOL', tool_result: 'TOOL RESULT', reasoning_started: 'QWEN', reasoning: 'REASON', action: 'ACTION', status_changed: 'STATUS', workflow_changed: 'BOARD', historical_reassessment: 'HISTORY', classification_revised: 'ROUTE', error: 'ERROR', example_seeded: 'QUESTION', example_preloaded: 'PRELOADED', rehearsal_started: 'PRACTICE', rehearsal_interrupted: 'RETRY', example_reviewed: 'REVISION' }
 function summary(event: TimelineEvent): string {
   const data = event.data
   if (event.type === 'user') return String(data.message || '')
   if (event.type === 'card_created') return `업무 카드 발행: ${data.title || ''}`
   if (event.type === 'example_seeded') return '연습할 질문이 등록되었습니다. 진단은 아직 실행되지 않았습니다.'
+  if (event.type === 'example_preloaded') return `가상 해결 사례 등록: ${data.root_cause || ''} → ${data.successful_action || ''}`
   if (event.type === 'rehearsal_started') return '실제 진단 흐름을 시작했습니다. Jev, 검색, 연결된 도구와 Qwen 결과를 기다립니다.'
   if (event.type === 'rehearsal_interrupted') return '이전 진단이 중단되어 질문을 다시 실행합니다.'
   if (event.type === 'example_reviewed') return `첫 판단: ${data.first_diagnosis || '없음'} → 수정: ${data.revised_cause || ''}`

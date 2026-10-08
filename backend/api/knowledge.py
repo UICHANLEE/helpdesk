@@ -33,7 +33,7 @@ def raft_dataset_status() -> dict:
 @router.get("/knowledge/raft/dataset")
 def download_raft_dataset() -> StreamingResponse:
     """Export a local training candidate; this endpoint does not train Qwen."""
-    rows = dataset.examples()
+    rows = dataset.training_examples()
     return StreamingResponse((json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
                              media_type="application/x-ndjson",
                              headers={"Content-Disposition": "attachment; filename=helpdesk-raft-v1.jsonl",

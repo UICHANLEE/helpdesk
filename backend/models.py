@@ -81,7 +81,7 @@ class IncidentState(BaseModel):
     questionSubmittedAt: str | None = None
     origin: str = "live"  # live | example
     seedKey: str | None = None
-    examplePhase: str | None = None  # seeded | investigating | awaiting_review | reviewed
+    examplePhase: str | None = None  # seeded | investigating | awaiting_review | preloaded | reviewed
     exampleReference: dict[str, str] | None = None
     firstDiagnosis: str | None = None
     firstActions: list[str] = Field(default_factory=list)

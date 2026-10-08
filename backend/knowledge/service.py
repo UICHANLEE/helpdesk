@@ -16,7 +16,8 @@ def signature(domain: str, diagnosis: str) -> str:
 
 
 def corpus_documents() -> list[dict[str, Any]]:
-    documents = [item for item in storage.list_knowledge(limit=10000) if item["status"] != "example_pending"]
+    documents = [item for item in storage.list_knowledge(limit=10000)
+                 if item["status"] not in ("example_pending", "example_variant")]
     faq = storage.list_faq()
     result = []
     for item in documents:
@@ -77,7 +78,7 @@ def search(query: str, limit: int = 5, exclude_id: str | None = None,
 def frequent_errors(limit: int = 10) -> list[dict[str, Any]]:
     grouped: dict[str, dict[str, Any]] = {}
     for item in storage.list_knowledge(limit=10000):
-        if item["status"] == "example":
+        if item["status"].startswith("example"):
             continue
         if not item["diagnosis"]:
             continue
@@ -100,10 +101,12 @@ def frequent_errors(limit: int = 10) -> list[dict[str, Any]]:
 
 def stats() -> dict[str, Any]:
     documents = storage.list_knowledge(limit=10000)
+    examples = [item["state"] for item in storage.list_incidents("examples")]
     domains = Counter(item["domain"] for item in documents if not item["status"].startswith("example"))
     return {"questions": sum(not item["status"].startswith("example") for item in documents),
             "resolved_knowledge": sum(item["status"] == "resolved" for item in documents),
             "example_count": sum(item["status"].startswith("example") for item in documents),
-            "example_reviewed": sum(item["status"] == "example" for item in documents),
+            "example_reviewed": sum(item.get("examplePhase") == "reviewed" for item in examples),
+            "example_preloaded": sum(item.get("examplePhase") == "preloaded" for item in examples),
             "faq_count": len(storage.list_faq()), "domains": dict(domains), "vector": vector.status(),
             "bootstrap": bootstrap.status()}
