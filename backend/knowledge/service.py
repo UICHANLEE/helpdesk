@@ -6,7 +6,7 @@ import re
 from collections import Counter
 from typing import Any
 
-from backend.knowledge import vector
+from backend.knowledge import bootstrap, vector
 from backend.raft.sparse import rank
 from backend.storage import sqlite as storage
 
@@ -32,6 +32,7 @@ def corpus_documents() -> list[dict[str, Any]]:
         result.append({"id": f"FAQ-{item['id']}", "type": "faq", "question": item["question"],
                        "answer": item["answer"], "actions": [], "status": "verified",
                        "content": f"{item['question']} {item['answer']}"})
+    result.extend(bootstrap.documents())
     return result
 
 
@@ -39,9 +40,9 @@ def search(query: str, limit: int = 5, exclude_id: str | None = None) -> list[di
     if not query.strip():
         return []
     documents = corpus_documents()
-    corpus = [item["content"] for item in documents]
+    corpus = [item["content"] + " " + item.get("aliases", "") for item in documents]
     try:
-        vector.sync(documents)
+        vector.sync(documents, timeout=8)
         dense = vector.scores(query, documents)
     except (OSError, ValueError, KeyError, OverflowError, TypeError):
         dense = {}  # Ollama is optional; lexical search remains available.
@@ -56,7 +57,9 @@ def search(query: str, limit: int = 5, exclude_id: str | None = None) -> list[di
         if not lexical and semantic < .45:
             continue
         score = .65 * semantic + .35 * lexical if dense else lexical
-        if item["status"].startswith("example"):
+        if item["status"] == "synthetic":
+            score *= .75  # Fictional patterns are hypotheses, not operator-confirmed fixes.
+        elif item["status"].startswith("example"):
             score *= .85  # Hypothetical scenarios cannot outrank equally relevant verified resolutions.
         elif item["status"] == "unverified":
             score *= .7  # A question without a confirmed outcome is weaker evidence.
@@ -96,4 +99,5 @@ def stats() -> dict[str, Any]:
             "resolved_knowledge": sum(item["status"] == "resolved" for item in documents),
             "example_count": sum(item["status"].startswith("example") for item in documents),
             "example_reviewed": sum(item["status"] == "example" for item in documents),
-            "faq_count": len(storage.list_faq()), "domains": dict(domains), "vector": vector.status()}
+            "faq_count": len(storage.list_faq()), "domains": dict(domains), "vector": vector.status(),
+            "bootstrap": bootstrap.status()}

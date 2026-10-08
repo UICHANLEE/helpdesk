@@ -21,8 +21,10 @@ async def retrieve(parsed: dict[str, Any], judgment: dict[str, Any], exclude_id:
             continue
         verified = item["status"] == "verified"
         example = item["status"] == "example"
-        matches.append({"id": item["id"], "title": item["answer"][:120] if verified or example else "유사한 미해결 질문",
+        synthetic = item["status"] == "synthetic"
+        matches.append({"id": item["id"], "title": item["answer"][:120] if verified or example or synthetic else "유사한 미해결 질문",
                         "summary": (f"확인된 해결 사례 | 질문: {item['question'][:180]} | 조치: {'; '.join(item['actions'])[:180]}" if verified else
+                                    f"가상 장애 패턴 (현재 건 검증 전) | 증상: {item['question'][:140]} | 가정 원인: {item['answer'][:120]} | 확인: {item['actions'][0][:120]}" if synthetic else
                                     f"예시 해결 시나리오 (실제 검증 아님) | 질문: {item['question'][:180]} | 가정 조치: {'; '.join(item['actions'])[:180]}" if example else
                                     f"미검증 유사 질문 (해결 근거 아님): {item['question'][:180]}"),
                         "score": item["score"], "verification": item["status"], "retrieval": item["retrieval"]})

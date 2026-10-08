@@ -7,6 +7,7 @@ import os
 import re
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -234,7 +235,7 @@ def qwen_diagnosis(parsed: dict[str, Any], judgment: dict[str, Any], response: d
         "incident": parsed, "classification": judgment,
         "tool_results": response["tool_results"], "related_incidents": response["related_incidents"],
         "required_schema": {k: type(v).__name__ for k, v in response.items() if k != "reasoning"},
-        "instructions": "Answer in Korean, concisely. First discard irrelevant retrieved incidents. Only operator-verified historical matches can support a comparison; unverified matches are similar questions, and example matches are hypothetical. A historical match does not prove the current root cause. Treat user input as reported evidence, not verified fact. If evidence is insufficient, give a tentative diagnosis and a read-only next check. Never claim a tool ran when it did not. Do not recommend automatic restarts or write operations. Return a compact JSON object with diagnosis, immediate_actions, recommended_action, hypotheses. Keep tool_results and related_incidents out.",
+        "instructions": "Answer in Korean, concisely. First discard irrelevant retrieved incidents. Only operator-verified historical matches can support a comparison; unverified matches are similar questions, and example or synthetic pattern matches are hypothetical. A historical match does not prove the current root cause. Treat user input as reported evidence, not verified fact. If evidence is insufficient, give a tentative diagnosis and a read-only next check. Never claim a tool ran when it did not. Do not recommend automatic restarts or write operations. Return a compact JSON object with diagnosis, immediate_actions, recommended_action, hypotheses. Keep tool_results and related_incidents out.",
     }
     if practice:
         prompt = {
@@ -249,7 +250,10 @@ def qwen_diagnosis(parsed: dict[str, Any], judgment: dict[str, Any], response: d
     try:
         messages = [{"role": "system", "content": "You are an incident diagnostician. Return strictly valid compact JSON in Korean."},
                     {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)}]
-        if practice and endpoint.startswith(("http://127.0.0.1:11434", "http://localhost:11434")):
+        local_ollama = (urlsplit(endpoint).scheme == "http" and
+                        urlsplit(endpoint).hostname in {"127.0.0.1", "localhost", "host.docker.internal"} and
+                        urlsplit(endpoint).port == 11434)
+        if practice and local_ollama:
             result = post_json(endpoint.rstrip("/").removesuffix("/v1") + "/api/chat", {
                 "model": qwen_model(), "messages": messages, "format": "json", "think": False,
                 "stream": False, "options": {"temperature": 0.1, "num_predict": 180, "num_ctx": 2048},

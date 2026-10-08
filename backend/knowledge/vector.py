@@ -17,12 +17,12 @@ MODEL = os.getenv("RAFT_EMBED_MODEL", "qwen3-embedding:0.6b")
 OLLAMA_EMBED_URL = os.getenv("OLLAMA_EMBED_URL", "http://127.0.0.1:11434/api/embed")
 
 
-def embed(texts: list[str]) -> list[list[float]]:
+def embed(texts: list[str], *, timeout: float = 45) -> list[list[float]]:
     if not texts:
         return []
     body = json.dumps({"model": MODEL, "input": texts, "truncate": True}).encode()
     request = urllib.request.Request(OLLAMA_EMBED_URL, body, {"Content-Type": "application/json"})
-    with urllib.request.urlopen(request, timeout=45) as response:
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         result = json.load(response)
     vectors = result.get("embeddings")
     if not isinstance(vectors, list) or len(vectors) != len(texts) or not all(isinstance(v, list) and v for v in vectors):
@@ -52,14 +52,14 @@ def content_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def sync(documents: list[dict[str, Any]]) -> int:
+def sync(documents: list[dict[str, Any]], *, timeout: float = 45) -> int:
     """Embed only new or changed documents; keep the original incident data untouched."""
     previous = {row["document_id"]: row for row in storage.list_vectors(MODEL)}
     changed = [doc for doc in documents if doc["id"] not in previous or
                previous[doc["id"]]["content_hash"] != content_hash(doc["content"])]
     for start in range(0, len(changed), 16):
         batch = changed[start:start + 16]
-        embeddings = embed([doc["content"][:8000] for doc in batch])
+        embeddings = embed([doc["content"][:8000] for doc in batch], timeout=timeout)
         storage.save_vectors([(doc["id"], MODEL, content_hash(doc["content"]), len(vector), pack(vector))
                               for doc, vector in zip(batch, embeddings)])
     storage.delete_stale_vectors({doc["id"] for doc in documents}, MODEL)
@@ -69,7 +69,7 @@ def sync(documents: list[dict[str, Any]]) -> int:
 def scores(query: str, documents: list[dict[str, Any]]) -> dict[str, float]:
     if not documents:
         return {}
-    query_vector = embed([query[:8000]])[0]
+    query_vector = embed([query[:8000]], timeout=8)[0]
     ids = {doc["id"] for doc in documents}
     return {row["document_id"]: cosine(query_vector, unpack(row["embedding"], row["dimensions"]))
             for row in storage.list_vectors(MODEL) if row["document_id"] in ids and row["dimensions"] == len(query_vector)}

@@ -1,9 +1,9 @@
 import { api } from './api'
 
-export interface KnowledgeResult { id: string; type: string; question: string; answer: string; actions: string[]; score: number; status: 'verified' | 'unverified' | 'example'; retrieval: 'hybrid' | 'lexical' }
+export interface KnowledgeResult { id: string; type: string; question: string; answer: string; actions: string[]; score: number; status: 'verified' | 'unverified' | 'example' | 'synthetic'; retrieval: 'hybrid' | 'lexical' }
 export interface FrequentError { signature: string; domain: string; diagnosis: string; count: number; resolved: number; latest_at: string; example_incident_id: string; suggested_answer: string; faq_published: boolean }
 export interface Faq { id: number; signature: string; question: string; answer: string; updated_at: string }
-export interface KnowledgeData { stats: { questions: number; resolved_knowledge: number; example_count: number; example_reviewed: number; faq_count: number; domains: Record<string, number>; vector: { model: string; indexed: number; storage: string } }; results: KnowledgeResult[]; frequent_errors: FrequentError[]; faq: Faq[] }
+export interface KnowledgeData { stats: { questions: number; resolved_knowledge: number; example_count: number; example_reviewed: number; faq_count: number; domains: Record<string, number>; vector: { model: string; indexed: number; storage: string }; bootstrap: { active: boolean; patterns: number; question_variants: number; trained_at: string | null; mode: string; model_fine_tuned: boolean } }; results: KnowledgeResult[]; frequent_errors: FrequentError[]; faq: Faq[] }
 export interface RaftDatasetStatus { schema: string; verified_cases: number; training_examples: number; train_examples: number; validation_examples: number; mode: string; model_fine_tuned: boolean; ready_for_fine_tuning: boolean; requires_operator_review: boolean; policy: string }
 export const getRaftDatasetStatus = () => api<RaftDatasetStatus>('/knowledge/raft/dataset-status')
 export interface DailyReport { date: string; summary: string; questions: number; resolved: number; domains: Record<string, number>; records?: Array<Record<string, string>> }

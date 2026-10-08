@@ -42,7 +42,7 @@ class KnowledgeWorkflowTest(unittest.TestCase):
         state = IncidentState(id="", classification=Classification(domain="DATABASE"),
                               symptoms=["저장 API HTTP 500"], diagnosis="추정 원인", immediateActions=["제안된 조치"])
         incident_id = storage.create_incident("DB 저장 실패", state)
-        with patch.object(vector, "embed", side_effect=lambda texts: [[1.0, 0.0] for _ in texts]):
+        with patch.object(vector, "embed", side_effect=lambda texts, **kwargs: [[1.0, 0.0] for _ in texts]):
             pending = search("DB 저장 실패")
         self.assertEqual(pending[0]["status"], "unverified")
         self.assertEqual(pending[0]["answer"], "")
@@ -51,7 +51,7 @@ class KnowledgeWorkflowTest(unittest.TestCase):
         changed_since = datetime.now(timezone.utc)
         asyncio.run(update_status(incident_id, StatusUpdateRequest(status=IncidentStatus.resolved,
                            root_cause="연결 풀 고갈", successful_action="연결 누수 수정")))
-        with patch.object(vector, "embed", side_effect=lambda texts: [[1.0, 0.0] for _ in texts]):
+        with patch.object(vector, "embed", side_effect=lambda texts, **kwargs: [[1.0, 0.0] for _ in texts]):
             self.assertEqual(search("DB 저장 실패")[0]["answer"], "연결 풀 고갈")
         self.assertEqual(publish_faq(FaqRequest(incident_id=incident_id, question="저장 실패 시?",
                                               answer="연결 풀을 확인합니다."))["question"], "저장 실패 시?")
@@ -70,7 +70,7 @@ class KnowledgeWorkflowTest(unittest.TestCase):
         state = IncidentState(id="", classification=Classification(domain="DATABASE"),
                               symptoms=["연결 실패"], diagnosis="추정 원인")
         incident_id = storage.create_incident("저장 요청 오류", state)
-        with patch.object(vector, "embed", side_effect=lambda texts: [[1.0, 0.0] for _ in texts]) as mocked:
+        with patch.object(vector, "embed", side_effect=lambda texts, **kwargs: [[1.0, 0.0] for _ in texts]) as mocked:
             first = search("저장 요청 문제")
             self.assertEqual(first[0]["retrieval"], "hybrid")
             self.assertEqual(len(storage.list_vectors(vector.MODEL)), 1)
