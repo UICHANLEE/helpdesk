@@ -14,6 +14,7 @@ from backend.api.incidents import review_example
 from backend.agent.orchestrator import rehearse_example
 from backend.knowledge.seed_examples import load_cases, seed_examples
 from backend.knowledge.generate_scenarios import build_cases, load_patterns
+from backend.knowledge.benchmark_examples import select_cases
 from backend.knowledge.service import corpus_documents, frequent_errors, stats
 from backend.observability.trace import graph
 from backend.reports import daily
@@ -41,6 +42,10 @@ class ExampleSeedTest(unittest.TestCase):
         self.assertEqual(seed_examples(index_vectors=False)["created"], 0)
         examples = storage.list_incidents("examples")
         self.assertEqual(len(examples), 1000)
+        plan = select_cases()
+        self.assertEqual(len(plan), 30)
+        self.assertEqual(len({item["domain"] for item in plan}), 11)
+        self.assertEqual(len({item["expected_pattern_id"] for item in plan}), 30)
         self.assertEqual(storage.list_incidents(), [])
         self.assertEqual(stats()["example_count"], 1000)
         self.assertEqual(stats()["resolved_knowledge"], 0)

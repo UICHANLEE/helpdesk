@@ -78,6 +78,7 @@ SQLite 원본·백업·엑셀 파일은 호스트의 `backend/data`, `backend/ba
 - 질문은 먼저 답을 숨긴 상태로 등록합니다. `/incidents/examples`에서 각 Incident의 **질문 진단 실행**을 누르면 Jev → RAFT → 연결된 점검 도구 → 로컬 Qwen 진단을 실제로 수행하고 이벤트와 첫 판단을 저장합니다. 완료 후 **판단 수정**에서 참고 답안과 비교해 원인·조치를 고치면 그때 연습 지식으로 검색됩니다. 참고 답안은 가상 시나리오이며 실제 장애를 확인했다는 뜻이 아닙니다.
 - 목록에서 영역·질문 유형을 골라 50건씩 탐색할 수 있습니다. 개별 질문의 **질문 진단 실행**으로 실제 모델 판단을 기다리고, 검토 후 원인·조치를 기록합니다. 기존에 검토한 사례의 결과는 시드 재실행 시 유지됩니다. 다량의 Qwen 진단을 한꺼번에 실행하지 않습니다.
 - 일부를 순서대로 연습하려면 `.venv/bin/python -m backend.knowledge.rehearse_examples --limit 20`처럼 건수를 지정합니다. Qwen이 성공하지 않은 사례는 자동 수정하지 않고 검토 대기 상태로 남깁니다. 이미 완료한 사례는 건너뛰므로 중단 후 재실행할 수 있습니다.
+- 11개 영역의 서로 다른 가상 패턴 30건을 실제 진단 흐름으로 평가한 방법과 결과는 [초기 평가 보고서](docs/benchmarks/2026-10-08-report.md)에 있습니다. `.venv/bin/python -m backend.knowledge.benchmark_examples`는 고정된 계획과 첫 판단을 로컬 `backend/reports/data/`에 저장하며 중단 후 재개할 수 있습니다. 가상 원천과 질문이 겹치므로 이 결과를 실전 정확도로 해석하지 않습니다.
 - 재입력이 필요하면 `.venv/bin/python -m backend.knowledge.seed_examples`를 실행합니다. `seedKey`로 중복 생성을 막고, 처음 입력할 때 `backend/backups/pre-example-seed-*.sqlite3`에 기존 DB 복사본을 남깁니다. 로컬 DB 파일은 Git에 포함되지 않습니다.
 
 ## 진단 연결

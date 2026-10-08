@@ -43,3 +43,17 @@ class BootstrapMemoryTest(unittest.TestCase):
             fallback = service.search("DB 연결 수가 상한에 근접하는 현상", limit=1)
         self.assertEqual(fallback[0]["status"], "synthetic")
         self.assertEqual(fallback[0]["retrieval"], "lexical")
+
+    def test_agent_search_downranks_unrelated_synthetic_domain(self) -> None:
+        documents = [
+            {"id": "PATTERN-001", "type": "pattern", "question": "모델 지연", "answer": "로드 지연",
+             "actions": ["확인"], "status": "synthetic", "domain": "LLM", "content": "모델 지연"},
+            {"id": "PATTERN-043", "type": "pattern", "question": "DB 연결", "answer": "연결 누수",
+             "actions": ["확인"], "status": "synthetic", "domain": "DATABASE", "content": "DB 연결"},
+        ]
+        with patch.object(service, "corpus_documents", return_value=documents), \
+             patch.object(vector, "sync", return_value=0), \
+             patch.object(vector, "scores", return_value={"PATTERN-001": .9, "PATTERN-043": .8}), \
+             patch.object(service, "rank", return_value=[(0, 1.0), (1, 1.0)]):
+            rows = service.search("DB 연결", domain="DATABASE")
+        self.assertEqual(rows[0]["id"], "PATTERN-043")

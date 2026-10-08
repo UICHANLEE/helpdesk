@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from incident import jev_judgment, parse_incident, rule_judgment
 from backend.agent.orchestrator import investigate
-from backend.knowledge.fallback import from_verified_history
+from backend.knowledge.fallback import from_synthetic_pattern, from_verified_history
 from backend.knowledge.reassess import reassess, reclassify_explicit_llm
 from backend.models import Classification, IncidentState, IncidentStatus, RaftMatch, WorkflowStage
 from backend.storage import sqlite as storage
@@ -55,6 +55,29 @@ class HistoryFallbackTest(unittest.IsolatedAsyncioTestCase):
             {"id": "INC-1", "title": "추정", "score": 0.7, "verification": "unverified", "retrieval": "hybrid"},
             {"id": "INC-2", "title": "과거 해결", "score": 0.1, "verification": "verified", "retrieval": "hybrid"},
         ]))
+
+    async def test_missing_qwen_uses_close_synthetic_pattern_only_as_unverified_check(self) -> None:
+        incident_id = storage.create_incident("한국어 특수문자가 OCR에서 잘못 읽혀요", IncidentState(
+            id="", classification=Classification(domain="OCR"),
+            providerStatus={"qwen": "pending"}, symptoms=["한국어 특수문자 OCR 오류"]))
+        matches = [{"id": "PATTERN-090", "title": "OCR 학습 데이터 부족",
+                    "summary": "가상 장애 패턴 | 확인: 오류 문자와 글꼴별 샘플 비교",
+                    "score": .75, "verification": "synthetic", "retrieval": "hybrid"}]
+        parsed = {"text": "한국어 특수문자가 OCR에서 잘못 읽혀요", "signals": []}
+        judgment = {"primary": "OCR", "secondary": None, "severity": "P3", "depth": "MEDIUM", "source": "jev"}
+        with patch("backend.agent.orchestrator.retrieve", return_value=matches), \
+             patch("backend.agent.orchestrator.tools_for", return_value=[]), \
+             patch("backend.agent.orchestrator.qwen_diagnose", return_value=None):
+            await investigate(incident_id, parsed, judgment)
+        state = storage.get_incident(incident_id)["state"]
+        self.assertIn("PATTERN-090", state["diagnosis"])
+        self.assertIn("원인 미확인", state["diagnosis"])
+        self.assertEqual(state["providerStatus"]["answer_source"], "synthetic_pattern_check")
+        self.assertEqual(state["recommendedAction"], "오류 문자와 글꼴별 샘플 비교")
+        self.assertIn("가상 패턴", state["reasoningTrace"][2]["text"])
+        self.assertIsNone(from_synthetic_pattern([{
+            "id": "PATTERN-001", "title": "약한 유사성", "score": .2,
+            "verification": "synthetic", "retrieval": "hybrid"}]))
 
     def test_reassessment_updates_only_generic_open_case_and_preserves_audit(self) -> None:
         state = IncidentState(id="", status=IncidentStatus.action_required,

@@ -27,16 +27,19 @@ def corpus_documents() -> list[dict[str, Any]]:
             content += f" {item['diagnosis']} {' '.join(item['actions'])}"
         result.append({"id": item["incident_id"], "type": "incident", "question": item["question"],
                        "answer": item["diagnosis"] if verified or example else "", "actions": item["actions"] if verified or example else [],
-                       "status": "example" if example else "verified" if verified else "unverified", "content": content.strip()})
+                       "status": "example" if example else "verified" if verified else "unverified",
+                       "domain": item["domain"], "content": content.strip()})
     for item in faq:
         result.append({"id": f"FAQ-{item['id']}", "type": "faq", "question": item["question"],
                        "answer": item["answer"], "actions": [], "status": "verified",
+                       "domain": item["signature"].split(":", 1)[0],
                        "content": f"{item['question']} {item['answer']}"})
     result.extend(bootstrap.documents())
     return result
 
 
-def search(query: str, limit: int = 5, exclude_id: str | None = None) -> list[dict[str, Any]]:
+def search(query: str, limit: int = 5, exclude_id: str | None = None,
+           domain: str | None = None, secondary: str | None = None) -> list[dict[str, Any]]:
     if not query.strip():
         return []
     documents = corpus_documents()
@@ -63,6 +66,9 @@ def search(query: str, limit: int = 5, exclude_id: str | None = None) -> list[di
             score *= .85  # Hypothetical scenarios cannot outrank equally relevant verified resolutions.
         elif item["status"] == "unverified":
             score *= .7  # A question without a confirmed outcome is weaker evidence.
+        allowed = {value for value in (domain, secondary) if value and value != "UNKNOWN"}
+        if allowed and item.get("domain") not in allowed:
+            score *= .3 if item["status"] in ("example", "synthetic", "unverified") else .7
         found.append({key: item[key] for key in ("id", "type", "question", "answer", "actions", "status")} |
                      {"score": round(score, 3), "retrieval": "hybrid" if dense else "lexical"})
     return sorted(found, key=lambda item: item["score"], reverse=True)[:limit]

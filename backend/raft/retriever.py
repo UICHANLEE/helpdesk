@@ -13,7 +13,8 @@ async def retrieve(parsed: dict[str, Any], judgment: dict[str, Any], exclude_id:
         remote = await asyncio.to_thread(search_raft, parsed, judgment)
     else:
         remote = []
-    local = await asyncio.to_thread(search, parsed["text"], 5, exclude_id)
+    local = await asyncio.to_thread(search, parsed["text"], 5, exclude_id,
+                                    judgment.get("primary"), judgment.get("secondary"))
     matches = list(remote)
     seen = {item["id"] for item in remote}
     for item in local:
